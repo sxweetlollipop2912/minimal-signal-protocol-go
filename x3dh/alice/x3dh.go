@@ -1,4 +1,4 @@
-package x3dh
+package alice
 
 import (
 	"minimal-signal/crypto/dh25519"
