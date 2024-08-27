@@ -13,7 +13,10 @@ import (
 
 func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (key []byte, ephPubKey key_ed25519.PublicKey, err error) {
 	var (
-		alice          AliceKeyBundle
+		alice = AliceKeyBundle{
+			IdentityKey:  aliceIdKey,
+			EphemeralKey: nil, // add later
+		}
 		aliceEphPubKey key_ed25519.PublicKey
 		sk             []byte
 	)
@@ -23,17 +26,13 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey
 	}
 
 	// 2. Alice generates an ephemeral key pair
-	aliceEphemeralKey, err := key_ed25519.New()
+	alice.EphemeralKey, err = key_ed25519.New()
 	if err != nil {
 		return nil, nil, err
 	}
 	aliceEphPubKey, err = alice.EphemeralKey.Public()
 	if err != nil {
 		return nil, nil, err
-	}
-	alice = AliceKeyBundle{
-		IdentityKey:  aliceIdKey,
-		EphemeralKey: aliceEphemeralKey,
 	}
 
 	// 3. Alice computes the shared secret
