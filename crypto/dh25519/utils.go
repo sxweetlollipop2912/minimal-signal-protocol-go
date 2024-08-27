@@ -1,8 +1,18 @@
 package dh25519
 
-import "minimal-signal/crypto/key_ed25519"
+import (
+	"errors"
+	"minimal-signal/crypto/key_ed25519"
+)
+
+var (
+	ErrInvalid = errors.New("invalid input")
+)
 
 func GetSecret(APrivKey *key_ed25519.PrivateKey, BPubKey *key_ed25519.PublicKey) ([]byte, error) {
+	if APrivKey == nil || BPubKey == nil {
+		return nil, ErrInvalid
+	}
 	privScalar, err := APrivKey.ToScalar()
 	if err != nil {
 		return nil, err
