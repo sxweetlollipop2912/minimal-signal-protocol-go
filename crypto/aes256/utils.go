@@ -1,15 +1,11 @@
 package aes256
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"errors"
 	"io"
-)
-
-var (
-	ErrInvalidKeySize = errors.New("invalid key size")
 )
 
 func NewKey() ([]byte, error) {
@@ -21,20 +17,16 @@ func NewKey() ([]byte, error) {
 	return key, nil
 }
 
-func Encrypt(plaintext, associatedData, key []byte) (ciphertext []byte, err error) {
-	if len(key) != 32 {
-		return nil, ErrInvalidKeySize
-	}
-
-	block, err := aes.NewCipher(key)
+// Encrypt encrypts the plaintext using AES-256 in CBC mode with PKCS#7 padding.
+func Encrypt(plaintext, associatedData, encKey [32]byte, iv [16]byte) (ciphertext []byte, err error) {
+	block, err := aes.NewCipher(encKey[:])
 	if err != nil {
 		return nil, err
 	}
 
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
+	paddedPlaintext := pkcs7Padding(plaintext[:], block.BlockSize())
+
+	mode := cipher.NewCBCEncrypter(block, iv[:])
 
 	nonce := make([]byte, aead.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -47,11 +39,8 @@ func Encrypt(plaintext, associatedData, key []byte) (ciphertext []byte, err erro
 	return ciphertext, nil
 }
 
-func Decrypt(ciphertext, associatedData, key []byte) (plaintext []byte, err error) {
-	if len(key) != 32 {
-		return nil, ErrInvalidKeySize
-	}
-
+// Decrypt decrypts the ciphertext using AES-256 in CBC mode with PKCS#7 padding.
+func Decrypt(ciphertext, associatedData, encKey [32]byte, iv [16]byte) (plaintext []byte, err error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -73,4 +62,18 @@ func Decrypt(ciphertext, associatedData, key []byte) (plaintext []byte, err erro
 	}
 
 	return plaintext, nil
+}
+
+// Helper function for PKCS#7 padding
+func pkcs7Padding(data []byte, blockSize int) []byte {
+	padding := blockSize - len(data)%blockSize
+	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(data, padtext...)
+}
+
+// Helper function for PKCS#7 unpadding
+func pkcs7Unpadding(data []byte) []byte {
+	length := len(data)
+	unpadding := int(data[length-1])
+	return data[:(length - unpadding)]
 }

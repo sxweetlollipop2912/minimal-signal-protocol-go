@@ -47,9 +47,9 @@ func TestPerformKeyAgreement(t *testing.T) {
 			assert.NotEmpty(t, key, "derived key is empty")
 
 			// Simulate Alice deriving the same key by performing the Diffie-Hellman operations
-			dh1, _ := dh25519.GetSecret(aliceIdentityPrivateKey, &bobKeys.PrekeyPublicKey)
-			dh2, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, &bobKeys.IdentityPublicKey)
-			dh3, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, &bobKeys.PrekeyPublicKey)
+			dh1, _ := dh25519.GetSecret(aliceIdentityPrivateKey, bobKeys.PrekeyPublicKey)
+			dh2, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, bobKeys.IdentityPublicKey)
+			dh3, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, bobKeys.PrekeyPublicKey)
 
 			var sk []byte
 			sk = append(sk, dh1...)
@@ -57,12 +57,12 @@ func TestPerformKeyAgreement(t *testing.T) {
 			sk = append(sk, dh3...)
 
 			if tt.withOneTimePrekey {
-				dh4, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, &bobKeys.OneTimePublicKey)
+				dh4, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, bobKeys.OneTimePublicKey)
 				sk = append(sk, dh4...)
 			}
 
 			// Derive the key using HKDF
-			derivedKey, err := hkdf.NewFromSecret(sk)
+			derivedKey, err := hkdf.New32BytesKeyFromSecret(sk)
 			assert.NoError(t, err, "error deriving key using HKDF on Alice's side")
 
 			// Check that Bob's derived key matches Alice's derived key
@@ -134,7 +134,7 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobKeys, error)
 	return bobBundle, bobKeys, nil
 }
 
-func generateAliceKeys() (*AliceKeyBundle, *key_ed25519.PrivateKey, *key_ed25519.PrivateKey, error) {
+func generateAliceKeys() (*AliceKeyBundle, key_ed25519.PrivateKey, key_ed25519.PrivateKey, error) {
 	identityKey, err := key_ed25519.New()
 	if err != nil {
 		return nil, nil, nil, err
@@ -160,7 +160,7 @@ func generateAliceKeys() (*AliceKeyBundle, *key_ed25519.PrivateKey, *key_ed25519
 		EphemeralKey: ephemeralPubKey,
 	}
 
-	return aliceBundle, &identityKey, &ephemeralKey, nil
+	return aliceBundle, identityKey, ephemeralKey, nil
 }
 
 func equalKeys(a, b []byte) bool {

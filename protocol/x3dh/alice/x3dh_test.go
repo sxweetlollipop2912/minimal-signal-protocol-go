@@ -74,9 +74,9 @@ func TestPerformKeyAgreement(t *testing.T) {
 
 				// Simulate Bob's side key derivation
 				alicePubIDKey, _ := aliceIdKey.Public()
-				dh1, _ := dh25519.GetSecret(&bobKeys.PrekeyPrivateKey, &alicePubIDKey)
-				dh2, _ := dh25519.GetSecret(&bobKeys.IdentityPrivateKey, &ephPubKey)
-				dh3, _ := dh25519.GetSecret(&bobKeys.PrekeyPrivateKey, &ephPubKey)
+				dh1, _ := dh25519.GetSecret(bobKeys.PrekeyPrivateKey, alicePubIDKey)
+				dh2, _ := dh25519.GetSecret(bobKeys.IdentityPrivateKey, ephPubKey)
+				dh3, _ := dh25519.GetSecret(bobKeys.PrekeyPrivateKey, ephPubKey)
 
 				var sk []byte
 				sk = append(sk, dh1...)
@@ -84,12 +84,12 @@ func TestPerformKeyAgreement(t *testing.T) {
 				sk = append(sk, dh3...)
 
 				if tt.withOneTimePrekey {
-					dh4, _ := dh25519.GetSecret(&bobKeys.OneTimePrivateKey, &ephPubKey)
+					dh4, _ := dh25519.GetSecret(bobKeys.OneTimePrivateKey, ephPubKey)
 					sk = append(sk, dh4...)
 				}
 
 				// Derive the key using HKDF
-				derivedKey, err := hkdf.NewFromSecret(sk)
+				derivedKey, err := hkdf.New32BytesKeyFromSecret(sk)
 				assert.NoError(t, err, "error deriving key using HKDF")
 
 				// Check that Alice's derived key matches Bob's derived key

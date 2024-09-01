@@ -36,25 +36,27 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey
 	}
 
 	// 3. Alice computes the shared secret
-	dh1, err := dh25519.GetSecret(&alice.IdentityKey, &bob.Prekey)
+	dh1, err := dh25519.GetSecret(alice.IdentityKey, bob.Prekey)
 	if err != nil {
 		return nil, nil, err
 	}
-	dh2, err := dh25519.GetSecret(&alice.EphemeralKey, &bob.IdentityKey)
+	dh2, err := dh25519.GetSecret(alice.EphemeralKey, bob.IdentityKey)
 	if err != nil {
 		return nil, nil, err
 	}
-	dh3, err := dh25519.GetSecret(&alice.EphemeralKey, &bob.Prekey)
+	dh3, err := dh25519.GetSecret(alice.EphemeralKey, bob.Prekey)
 	if err != nil {
 		return nil, nil, err
 	}
-	dh4, err := dh25519.GetSecret(&alice.EphemeralKey, &bob.OneTimePrekey)
+	dh4, err := dh25519.GetSecret(alice.EphemeralKey, bob.OneTimePrekey)
 	if err != nil {
+		// If Bob doesn't provide one-time key
 		sk = make([]byte, 0, len(dh1)+len(dh2)+len(dh3))
 		sk = append(sk, dh1...)
 		sk = append(sk, dh2...)
 		sk = append(sk, dh3...)
 	} else {
+		// If Bob provides one-time key
 		sk = make([]byte, 0, len(dh1)+len(dh2)+len(dh3)+len(dh4))
 		sk = append(sk, dh1...)
 		sk = append(sk, dh2...)
@@ -63,7 +65,7 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey
 	}
 
 	// 4. Alice derives the key
-	key, err = hkdf.NewFromSecret(sk)
+	key, err = hkdf.New32BytesKeyFromSecret(sk)
 	if err != nil {
 		return nil, nil, err
 	}

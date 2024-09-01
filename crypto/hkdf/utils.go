@@ -3,11 +3,12 @@ package hkdf
 import (
 	"crypto/sha256"
 	"golang.org/x/crypto/hkdf"
+	"hash"
 	"io"
 )
 
-// NewFromSecret derives a new 32-bit key from a secret using HKDF
-func NewFromSecret(secret []byte) ([]byte, error) {
+// New32BytesKeyFromSecret derives a new 32-bit key from a secret using HKDF
+func New32BytesKeyFromSecret(secret []byte) ([]byte, error) {
 	// Create an HKDF reader using SHA-256 as the hash function
 	hkdfReader := hkdf.New(sha256.New, secret, nil, nil)
 
@@ -19,4 +20,10 @@ func NewFromSecret(secret []byte) ([]byte, error) {
 		return nil, err
 	}
 	return key, nil
+}
+
+// KDF to help with the ratchet
+func KDF(hash func() hash.Hash, keyMaterial []byte, salt []byte, info []byte, buffer []byte) (int, error) {
+	hkdfReader := hkdf.New(hash, keyMaterial[:], salt[:], info)
+	return io.ReadFull(hkdfReader, buffer)
 }

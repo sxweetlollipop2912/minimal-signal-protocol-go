@@ -10,6 +10,10 @@ type (
 	PrivateKey []byte
 	// PublicKey is a 32-byte public key
 	PublicKey []byte
+	Pair      struct {
+		Priv PrivateKey
+		Pub  PublicKey
+	}
 )
 
 var (
