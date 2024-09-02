@@ -11,26 +11,28 @@ import (
 // - Alice: sender
 // - Bob: receiver
 
-func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (key []byte, ephPubKey key_ed25519.PublicKey, err error) {
+func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (key []byte, ephPubKey *key_ed25519.PublicKey, err error) {
 	var (
 		alice = AliceKeyBundle{
-			IdentityKey:  aliceIdKey,
-			EphemeralKey: nil, // add later
+			IdentityKey: aliceIdKey,
 		}
-		aliceEphPubKey key_ed25519.PublicKey
-		sk             []byte
+		aliceEphPubKeyPtr *key_ed25519.PublicKey
+		sk                []byte
 	)
+
 	// 1. Alice verifies Bob's signature
 	if err = bob.Verify(); err != nil {
 		return nil, nil, err
 	}
 
 	// 2. Alice generates an ephemeral key pair
-	alice.EphemeralKey, err = key_ed25519.New()
+	ephKeyPtr, err := key_ed25519.New()
 	if err != nil {
 		return nil, nil, err
 	}
-	aliceEphPubKey, err = alice.EphemeralKey.Public()
+	alice.EphemeralKey = *ephKeyPtr
+
+	aliceEphPubKeyPtr, err = alice.EphemeralKey.Public()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -48,20 +50,26 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey
 	if err != nil {
 		return nil, nil, err
 	}
-	dh4, err := dh25519.GetSecret(alice.EphemeralKey, bob.OneTimePrekey)
-	if err != nil {
-		// If Bob doesn't provide one-time key
-		sk = make([]byte, 0, len(dh1)+len(dh2)+len(dh3))
-		sk = append(sk, dh1...)
-		sk = append(sk, dh2...)
-		sk = append(sk, dh3...)
-	} else {
+
+	var dh4 []byte
+	if bob.OneTimePrekey != nil {
+		if dh4, err = dh25519.GetSecret(alice.EphemeralKey, *bob.OneTimePrekey); err != nil {
+			dh4 = nil
+		}
+	}
+	if dh4 != nil {
 		// If Bob provides one-time key
 		sk = make([]byte, 0, len(dh1)+len(dh2)+len(dh3)+len(dh4))
 		sk = append(sk, dh1...)
 		sk = append(sk, dh2...)
 		sk = append(sk, dh3...)
 		sk = append(sk, dh4...)
+	} else {
+		// If Bob doesn't provide one-time key
+		sk = make([]byte, 0, len(dh1)+len(dh2)+len(dh3))
+		sk = append(sk, dh1...)
+		sk = append(sk, dh2...)
+		sk = append(sk, dh3...)
 	}
 
 	// 4. Alice derives the key
@@ -69,5 +77,5 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey
 	if err != nil {
 		return nil, nil, err
 	}
-	return key, aliceEphPubKey, nil
+	return key, aliceEphPubKeyPtr, nil
 }

@@ -104,15 +104,15 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobKeys, error)
 	}
 
 	bobKeys := &BobKeys{
-		IdentityPublicKey:  identityPubKey,
-		PrekeyPublicKey:    prekeyPubKey,
-		IdentityPrivateKey: identityKey,
-		PrekeyPrivateKey:   prekey,
+		IdentityPublicKey:  *identityPubKey,
+		PrekeyPublicKey:    *prekeyPubKey,
+		IdentityPrivateKey: *identityKey,
+		PrekeyPrivateKey:   *prekey,
 	}
 
 	bobBundle := &BobPrekeyBundle{
-		IdentityKey: identityKey,
-		Prekey:      prekey,
+		IdentityKey: *identityKey,
+		Prekey:      *prekey,
 	}
 
 	if withOneTimePrekey {
@@ -126,8 +126,8 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobKeys, error)
 			return nil, nil, err
 		}
 
-		bobKeys.OneTimePublicKey = oneTimePrekeyPubKey
-		bobKeys.OneTimePrivateKey = oneTimePrekey
+		bobKeys.OneTimePublicKey = *oneTimePrekeyPubKey
+		bobKeys.OneTimePrivateKey = *oneTimePrekey
 		bobBundle.OneTimePrekey = oneTimePrekey
 	}
 
@@ -137,30 +137,30 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobKeys, error)
 func generateAliceKeys() (*AliceKeyBundle, key_ed25519.PrivateKey, key_ed25519.PrivateKey, error) {
 	identityKey, err := key_ed25519.New()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, key_ed25519.PrivateKey{}, key_ed25519.PrivateKey{}, err
 	}
 
 	ephemeralKey, err := key_ed25519.New()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, key_ed25519.PrivateKey{}, key_ed25519.PrivateKey{}, err
 	}
 
 	identityPubKey, err := identityKey.Public()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, key_ed25519.PrivateKey{}, key_ed25519.PrivateKey{}, err
 	}
 
 	ephemeralPubKey, err := ephemeralKey.Public()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, key_ed25519.PrivateKey{}, key_ed25519.PrivateKey{}, err
 	}
 
 	aliceBundle := &AliceKeyBundle{
-		IdentityKey:  identityPubKey,
-		EphemeralKey: ephemeralPubKey,
+		IdentityKey:  *identityPubKey,
+		EphemeralKey: *ephemeralPubKey,
 	}
 
-	return aliceBundle, identityKey, ephemeralKey, nil
+	return aliceBundle, *identityKey, *ephemeralKey, nil
 }
 
 func equalKeys(a, b []byte) bool {

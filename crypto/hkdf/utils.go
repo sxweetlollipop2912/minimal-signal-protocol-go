@@ -1,16 +1,16 @@
 package hkdf
 
 import (
-	"crypto/sha256"
 	"golang.org/x/crypto/hkdf"
 	"hash"
 	"io"
+	"minimal-signal/crypto"
 )
 
 // New32BytesKeyFromSecret derives a new 32-bit key from a secret using HKDF
 func New32BytesKeyFromSecret(secret []byte) ([]byte, error) {
 	// Create an HKDF reader using SHA-256 as the hash function
-	hkdfReader := hkdf.New(sha256.New, secret, nil, nil)
+	hkdfReader := hkdf.New(crypto.DefaultHashFunc, secret, nil, nil)
 
 	// Create a buffer to hold the derived key
 	key := make([]byte, 32)

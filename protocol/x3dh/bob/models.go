@@ -7,7 +7,7 @@ import (
 type BobPrekeyBundle struct {
 	IdentityKey   key_ed25519.PrivateKey
 	Prekey        key_ed25519.PrivateKey
-	OneTimePrekey key_ed25519.PrivateKey // optional
+	OneTimePrekey *key_ed25519.PrivateKey // optional
 }
 
 type AliceKeyBundle struct {

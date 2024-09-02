@@ -5,7 +5,12 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"errors"
 	"io"
+)
+
+var (
+	ErrCiphertextLengthInvalid = errors.New("ciphertext length invalid")
 )
 
 func NewKey() ([]byte, error) {
@@ -18,50 +23,36 @@ func NewKey() ([]byte, error) {
 }
 
 // Encrypt encrypts the plaintext using AES-256 in CBC mode with PKCS#7 padding.
-func Encrypt(plaintext, associatedData, encKey [32]byte, iv [16]byte) (ciphertext []byte, err error) {
-	block, err := aes.NewCipher(encKey[:])
+func Encrypt(plaintext []byte, key [32]byte, iv [16]byte) (ciphertext []byte, err error) {
+	block, err := aes.NewCipher(key[:])
 	if err != nil {
 		return nil, err
 	}
 
 	paddedPlaintext := pkcs7Padding(plaintext[:], block.BlockSize())
+	ciphertext = make([]byte, len(paddedPlaintext))
 
 	mode := cipher.NewCBCEncrypter(block, iv[:])
-
-	nonce := make([]byte, aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-
-	ciphertext = aead.Seal(nil, nonce, plaintext, associatedData)
-	// Prepend the nonce to the ciphertext
-	ciphertext = append(nonce, ciphertext...)
+	mode.CryptBlocks(ciphertext, paddedPlaintext)
 	return ciphertext, nil
 }
 
 // Decrypt decrypts the ciphertext using AES-256 in CBC mode with PKCS#7 padding.
-func Decrypt(ciphertext, associatedData, encKey [32]byte, iv [16]byte) (plaintext []byte, err error) {
-	block, err := aes.NewCipher(key)
+func Decrypt(ciphertext []byte, key [32]byte, iv [16]byte) (plaintext []byte, err error) {
+	block, err := aes.NewCipher(key[:])
 	if err != nil {
 		return nil, err
 	}
 
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
+	if len(ciphertext) == 0 || len(ciphertext)%block.BlockSize() != 0 {
+		return nil, ErrCiphertextLengthInvalid
 	}
 
-	nonceSize := aead.NonceSize()
+	mode := cipher.NewCBCDecrypter(block, iv[:])
+	plaintext = make([]byte, len(ciphertext))
+	mode.CryptBlocks(plaintext, ciphertext[:])
 
-	// Extract the nonce from the beginning of the ciphertext
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-
-	plaintext, err = aead.Open(nil, nonce, ciphertext, associatedData)
-	if err != nil {
-		return nil, err
-	}
-
-	return plaintext, nil
+	return pkcs7Unpadding(plaintext), nil
 }
 
 // Helper function for PKCS#7 padding

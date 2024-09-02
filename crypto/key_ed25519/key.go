@@ -7,9 +7,9 @@ import (
 
 type (
 	// PrivateKey is a 32-byte private key
-	PrivateKey []byte
+	PrivateKey [32]byte
 	// PublicKey is a 32-byte public key
-	PublicKey []byte
+	PublicKey [32]byte
 	Pair      struct {
 		Priv PrivateKey
 		Pub  PublicKey
@@ -20,32 +20,62 @@ var (
 	Suite = suites.MustFind("Ed25519") // Use the edwards25519-curve
 )
 
-func New() (PrivateKey, error) {
+func New() (*PrivateKey, error) {
 	privK := Suite.Scalar().Pick(Suite.RandomStream())
-	return privK.MarshalBinary()
+	mutSlicePriv, err := privK.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	var privB PrivateKey
+	copy(privB[:], mutSlicePriv)
+	return &privB, nil
 }
 
-func (privB PrivateKey) Public() (PublicKey, error) {
+func (privB *PrivateKey) Public() (*PublicKey, error) {
 	privK, err := privB.ToScalar()
 	if err != nil {
 		return nil, err
 	}
 	pubK := Suite.Point().Mul(privK, nil)
-	return pubK.MarshalBinary()
+	mutSlicePub, err := pubK.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	var pubB PublicKey
+	copy(pubB[:], mutSlicePub)
+	return &pubB, nil
 }
 
-func (privB PrivateKey) ToScalar() (kyber.Scalar, error) {
+func (privB *PrivateKey) ToScalar() (kyber.Scalar, error) {
 	privK := Suite.Scalar()
-	if err := privK.UnmarshalBinary(privB); err != nil {
+	if err := privK.UnmarshalBinary(privB[:]); err != nil {
 		return nil, err
 	}
 	return privK, nil
 }
 
-func (pubB PublicKey) ToPoint() (kyber.Point, error) {
+func (pubB *PublicKey) ToPoint() (kyber.Point, error) {
 	pubK := Suite.Point()
-	if err := pubK.UnmarshalBinary(pubB); err != nil {
+	if err := pubK.UnmarshalBinary(pubB[:]); err != nil {
 		return nil, err
 	}
 	return pubK, nil
+}
+
+func (pubB *PublicKey) Equals(other *PublicKey) bool {
+	if pubB == nil || other == nil {
+		return false
+	}
+
+	pubBytes := [32]byte(*pubB)
+	otherBytes := [32]byte(*other)
+
+	for i := range pubBytes {
+		if pubBytes[i] != otherBytes[i] {
+			return false
+		}
+	}
+	return true
 }

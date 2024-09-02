@@ -9,7 +9,7 @@ type BobPrekeyBundle struct {
 	IdentityKey   key_ed25519.PublicKey
 	Prekey        key_ed25519.PublicKey
 	PrekeySig     []byte
-	OneTimePrekey key_ed25519.PublicKey // optional
+	OneTimePrekey *key_ed25519.PublicKey // optional
 }
 
 type AliceKeyBundle struct {
@@ -18,5 +18,5 @@ type AliceKeyBundle struct {
 }
 
 func (bob *BobPrekeyBundle) Verify() error {
-	return signer_schnorr.Verify(bob.IdentityKey, bob.Prekey, bob.PrekeySig)
+	return signer_schnorr.Verify(bob.IdentityKey, bob.Prekey[:], bob.PrekeySig)
 }

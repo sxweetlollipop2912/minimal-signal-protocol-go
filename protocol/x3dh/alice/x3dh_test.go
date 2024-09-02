@@ -33,11 +33,6 @@ func TestPerformKeyAgreement(t *testing.T) {
 			withOneTimePrekey: false,
 			expectedError:     errors.New("schnorr: signature of invalid length 17 instead of 64"),
 		},
-		{
-			name:              "Error in ephemeral key generation",
-			withOneTimePrekey: false,
-			expectedError:     errors.New("wrong size buffer"),
-		},
 	}
 
 	for _, tt := range tests {
@@ -52,9 +47,6 @@ func TestPerformKeyAgreement(t *testing.T) {
 			if tt.name == "Verification failure" {
 				// Modify the signature to be invalid
 				bobBundle.PrekeySig = invalidSignature()
-			} else if tt.name == "Error in ephemeral key generation" {
-				// Invalidate Alice's identity key to simulate an error during ephemeral key generation
-				aliceIdKey = generateInvalidPrivateKey()
 			}
 
 			// Perform key agreement
@@ -74,9 +66,9 @@ func TestPerformKeyAgreement(t *testing.T) {
 
 				// Simulate Bob's side key derivation
 				alicePubIDKey, _ := aliceIdKey.Public()
-				dh1, _ := dh25519.GetSecret(bobKeys.PrekeyPrivateKey, alicePubIDKey)
-				dh2, _ := dh25519.GetSecret(bobKeys.IdentityPrivateKey, ephPubKey)
-				dh3, _ := dh25519.GetSecret(bobKeys.PrekeyPrivateKey, ephPubKey)
+				dh1, _ := dh25519.GetSecret(bobKeys.PrekeyPrivateKey, *alicePubIDKey)
+				dh2, _ := dh25519.GetSecret(bobKeys.IdentityPrivateKey, *ephPubKey)
+				dh3, _ := dh25519.GetSecret(bobKeys.PrekeyPrivateKey, *ephPubKey)
 
 				var sk []byte
 				sk = append(sk, dh1...)
@@ -84,7 +76,7 @@ func TestPerformKeyAgreement(t *testing.T) {
 				sk = append(sk, dh3...)
 
 				if tt.withOneTimePrekey {
-					dh4, _ := dh25519.GetSecret(bobKeys.OneTimePrivateKey, ephPubKey)
+					dh4, _ := dh25519.GetSecret(bobKeys.OneTimePrivateKey, *ephPubKey)
 					sk = append(sk, dh4...)
 				}
 
@@ -130,19 +122,20 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobPrivKeys, er
 	}
 
 	// Sign the prekey using Bob's identity key
-	prekeySig, err := signer_schnorr.Sign(identityKey, prekeyPubKey)
+	prekeyPubKeyBytes := [32]byte(*prekeyPubKey)
+	prekeySig, err := signer_schnorr.Sign(*identityKey, prekeyPubKeyBytes[:])
 	if err != nil {
 		return nil, nil, err
 	}
 
 	bobKeys := &BobPrivKeys{
-		IdentityPrivateKey: identityKey,
-		PrekeyPrivateKey:   prekey,
+		IdentityPrivateKey: *identityKey,
+		PrekeyPrivateKey:   *prekey,
 	}
 
 	bobBundle := &BobPrekeyBundle{
-		IdentityKey: identityPubKey,
-		Prekey:      prekeyPubKey,
+		IdentityKey: *identityPubKey,
+		Prekey:      *prekeyPubKey,
 		PrekeySig:   prekeySig,
 	}
 
@@ -157,7 +150,7 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobPrivKeys, er
 			return nil, nil, err
 		}
 
-		bobKeys.OneTimePrivateKey = oneTimePrekey
+		bobKeys.OneTimePrivateKey = *oneTimePrekey
 		bobBundle.OneTimePrekey = oneTimePrekeyPubKey
 	}
 
@@ -166,11 +159,7 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobPrivKeys, er
 
 func generatePrivateKey() key_ed25519.PrivateKey {
 	privKey, _ := key_ed25519.New()
-	return privKey
-}
-
-func generateInvalidPrivateKey() key_ed25519.PrivateKey {
-	return nil // Simulate an error in key generation
+	return *privKey
 }
 
 func invalidSignature() []byte {
