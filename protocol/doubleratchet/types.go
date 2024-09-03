@@ -13,8 +13,10 @@ type (
 
 type Header struct {
 	RatchetPub key_ed25519.PublicKey
-	ChainLen   MsgIndex
-	MsgNum     MsgIndex
+	// Pn is the number of messages in previous chain
+	Pn MsgIndex
+	// N is the message number
+	N MsgIndex
 }
 
 func UnmarshalHeader(data []byte) (*Header, error) {
@@ -29,7 +31,7 @@ func (h *Header) Equals(other *Header) bool {
 	if h == nil || other == nil {
 		return false
 	}
-	return h.RatchetPub.Equals(&other.RatchetPub) && h.ChainLen == other.ChainLen && h.MsgNum == other.MsgNum
+	return h.RatchetPub.Equals(&other.RatchetPub) && h.Pn == other.Pn && h.N == other.N
 }
 
 func (h *Header) Marshal() ([]byte, error) {
@@ -37,19 +39,27 @@ func (h *Header) Marshal() ([]byte, error) {
 }
 
 // State ref: https://signal.org/docs/specifications/doubleratchet/#state-variables
-type State struct {
+type state struct {
 	// dhs is the DH Ratchet key pair (the “sending” or “self” ratchet key)
 	dhs key_ed25519.Pair
 	// dhr is the DH Ratchet public key (the “received” or “remote” key)
-	dhr key_ed25519.PublicKey
+	// Not initialized at the beginning for Bob
+	dhr *key_ed25519.PublicKey
 	// rk is the 32-byte Root Key
 	rk RatchetKey
 	// cks and ckr are 32-byte Chain Keys for sending and receiving
-	cks, ckr RatchetKey
+	// cks is not initialized at the beginning for Bob
+	// ckr is not initialized at the beginning for both Bob and Alice
+	cks, ckr *RatchetKey
 	// ns and nr are message numbers for sending and receiving
 	ns, nr MsgIndex
 	// pn is the number of messages in previous sending chain
 	pn MsgIndex
 	// mkSkipped is a map of skipped-over message keys, indexed by ratchet public key and message number
-	mkSkipped map[key_ed25519.PublicKey]map[MsgIndex]MsgKey
+	mkSkipped map[mkSkippedKey]*MsgKey
+}
+
+type mkSkippedKey struct {
+	RatchetPub key_ed25519.PublicKey
+	N          MsgIndex
 }

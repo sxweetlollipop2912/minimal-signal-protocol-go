@@ -1,196 +1,258 @@
 package doubleratchet
 
 import (
-	hmac2 "crypto/hmac"
-	"minimal-signal/crypto"
-	"minimal-signal/crypto/aes256"
-	"minimal-signal/crypto/dh25519"
-	"minimal-signal/crypto/hkdf"
-	"minimal-signal/crypto/hmac"
 	"minimal-signal/crypto/key_ed25519"
 )
 
 const (
 	// maxSkip is the constant specifying the maximum number of message keys that can be skipped in a single chain
-	maxSkip = 20 // TODO: this is a random value
+	maxSkip = 1000 // TODO: this is a random value
 )
 
-var (
-	// Salts must be unique for each KDF invocation
-	HKDFSaltKDF_RK = []byte("RootKey")
-	HKDFSaltAES    = []byte("MessageKey")
-)
-
-// DoubleRatchet is the interface is defined in
-// https://signal.org/docs/specifications/doubleratchet/#external-functions
 type DoubleRatchet interface {
-	// GenerateDH returns a new Diffie-Hellman key pair
-	GenerateDH() (*key_ed25519.PrivateKey, *key_ed25519.PublicKey, error)
+	// Encrypt is the exported function that performs a symmetric-key ratchet step, then encrypts the message with the
+	// resulting message key. In addition to the message’s plaintext it takes an AD byte sequence which is prepended
+	// to the header to form the associated data for the underlying AEAD encryption.
+	Encrypt(plaintext []byte, associatedData []byte) (header *Header, ciphertext []byte, err error)
 
-	// DH returns the output from the Diffie-Hellman calculation
-	DH(privKey key_ed25519.PrivateKey, pubKey key_ed25519.PublicKey) (*RatchetKey, error)
-
-	// KDF_RK returns a pair (32-byte root key, 32-byte chain key) as the output of applying a
-	// KDF keyed by a 32-byte root key rk to a Diffie-Hellman output dh_out.
-	KDF_RK(rk RatchetKey, dhOut RatchetKey) (rootKey *RatchetKey, chainKey *RatchetKey, err error)
-
-	// KDF_CK returns a pair (32-byte chain key, 32-byte message key) as the output of applying a
-	// KDF keyed by a 32-byte chain key ck to some constant.
-	KDF_CK(ck RatchetKey) (chainKey *RatchetKey, messageKey *MsgKey, err error)
-
-	// Encrypt returns the AEAD encryption of plaintext with message key mk
-	Encrypt(mk MsgKey, plaintext []byte, associatedData []byte) (ciphertext []byte, err error)
-
-	// Decrypt returns the AEAD decryption of ciphertext with message key mk
-	Decrypt(mk MsgKey, ciphertext []byte, associatedData []byte) (plaintext []byte, err error)
-
-	// Header creates a new message header
-	Header(ratchetPub key_ed25519.PublicKey, chainLen MsgIndex, msgNum MsgIndex) (Header, error)
-
-	// Concat encodes a message header into a parseable byte sequence, prepending the ad byte
-	Concat(ad []byte, header Header) ([]byte, error)
+	// Decrypt is the exported function that decrypts messages. It does the following:
+	// • If the message corresponds to a skipped message key this function decrypts the message,
+	// deletes the message key, and returns.
+	// • Otherwise, if a new ratchet key has been received this function stores any skipped message keys from the
+	// receiving chain and performs a DH ratchet step to replace the sending and receiving chains.
+	// • This function then stores any skipped message keys from the current receiving chain, performs a symmetric-key
+	// ratchet step to derive the relevant message key and next chain key, and decrypts the message.
+	// If an exception is raised (e.g. message authentication failure) then the message is discarded and changes to
+	// the state object are discarded. Otherwise, accept the decrypted plaintext and store changes to the state object.
+	Decrypt(header Header, ciphertext []byte, associatedData []byte) (plaintext []byte, err error)
 
 	// MaxSkip returns the constant specifying the maximum number of message keys that can be skipped in a single chain
 	MaxSkip() MsgIndex
 }
 
 // doubleRatchetImpl implements the DoubleRatchet interface.
-// Defined in https://signal.org/docs/specifications/doubleratchet/#recommended-cryptographic-algorithms
+// https://signal.org/docs/specifications/doubleratchet/#encrypting-messages and
+// https://signal.org/docs/specifications/doubleratchet/#decrypting-messages
 type doubleRatchetImpl struct {
-	currentState *State
+	currentState *state
+	utils        doubleRatchetUtils
 }
 
-func NewDoubleRatchet(initState *State) DoubleRatchet {
+func NewDoubleRatchet(initState *state) DoubleRatchet {
+	if initState.mkSkipped == nil {
+		initState.mkSkipped = make(map[mkSkippedKey]*MsgKey)
+	}
 	return &doubleRatchetImpl{
 		currentState: initState,
+		utils:        newDoubleRatchetUtils(),
 	}
 }
 
-func (dr *doubleRatchetImpl) GenerateDH() (*key_ed25519.PrivateKey, *key_ed25519.PublicKey, error) {
-	priv, err := key_ed25519.New()
+// InitAlice initializes the Double Ratchet for the sender
+func InitAlice(sk RatchetKey, bobDhPubKey key_ed25519.PublicKey) (DoubleRatchet, error) {
+	utils := newDoubleRatchetUtils()
+
+	// Init dhs
+	dhs, err := utils.generateDH()
+	if err != nil {
+		return nil, err
+	}
+
+	// Init dhr
+	dhr := bobDhPubKey
+
+	// Init rk, cks
+	kdfRkInput, err := utils.dh(dhs.Priv, dhr)
+	if err != nil {
+		return nil, err
+	}
+	rk, cks, err := utils.kdfRk(sk, *kdfRkInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewDoubleRatchet(&state{
+		dhs: *dhs,
+		dhr: &dhr,
+		rk:  *rk,
+		cks: cks,
+		// ckr, ns, nr, pn, mkSkipped are init as zero values
+	}), nil
+}
+
+// InitBob initializes the Double Ratchet for the receiver
+func InitBob(sk RatchetKey, bobDhKeyPair key_ed25519.Pair) DoubleRatchet {
+	return NewDoubleRatchet(&state{
+		dhs: bobDhKeyPair,
+		rk:  sk,
+		// dhr, cks, ckr, ns, nr, pn, mkSkipped are init as zero values
+	})
+}
+
+func (dr *doubleRatchetImpl) Encrypt(plaintext []byte, associatedData []byte) (*Header, []byte, error) {
+	var (
+		mk  *MsgKey
+		err error
+	)
+
+	// 1. Generate current message key & update chain key
+	dr.currentState.cks, mk, err = dr.utils.kdfCk(*dr.currentState.cks)
 	if err != nil {
 		return nil, nil, err
 	}
-	pub, err := priv.Public()
+
+	// 2. Create header & its byte sequence
+	header := Header{
+		RatchetPub: dr.currentState.dhs.Pub,
+		Pn:         dr.currentState.pn,
+		N:          dr.currentState.ns,
+	}
+
+	// 3. Update state.ns
+	dr.currentState.ns++
+
+	// 4. Encrypt plaintext w/ header + associatedData
+	ad, err := dr.utils.concat(associatedData, header)
 	if err != nil {
 		return nil, nil, err
 	}
-	return priv, pub, nil
-}
-
-func (dr *doubleRatchetImpl) DH(privKey key_ed25519.PrivateKey, pubKey key_ed25519.PublicKey) (*RatchetKey, error) {
-	secret, err := dh25519.GetSecret(privKey, pubKey)
+	ciphertext, err := dr.utils.encrypt(*mk, plaintext, ad)
 	if err != nil {
-		return nil, err
-	}
-	if len(secret) != 32 {
-		return nil, ErrInvalidSecretLength
-	}
-	var secret32 [32]byte
-	copy(secret32[:], secret)
-	return (*RatchetKey)(&secret32), nil
-}
-
-func (dr *doubleRatchetImpl) KDF_RK(rk RatchetKey, dhOut RatchetKey) (*RatchetKey, *RatchetKey, error) {
-	buffer := make([]byte, 64)
-	if n, err := hkdf.KDF(crypto.DefaultHashFunc, dhOut[:], rk[:], HKDFSaltKDF_RK, buffer); err != nil {
 		return nil, nil, err
-	} else if n != 64 {
-		return nil, nil, ErrInvalidSecretLength
 	}
-	var rootKey32 [32]byte
-	var chainKey32 [32]byte
-	copy(rootKey32[:], buffer[:32])
-	copy(chainKey32[:], buffer[32:])
-	return (*RatchetKey)(&rootKey32), (*RatchetKey)(&chainKey32), nil
+
+	return &header, ciphertext, nil
 }
 
-func (dr *doubleRatchetImpl) KDF_CK(ck RatchetKey) (*RatchetKey, *MsgKey, error) {
-	messageKey := hmac.Hash(crypto.DefaultHashFunc, ck[:], []byte{0x01})
-	if len(messageKey) != 32 {
-		return nil, nil, ErrInvalidSecretLength
-	}
-	chainKey := hmac.Hash(crypto.DefaultHashFunc, ck[:], []byte{0x02})
-	if len(chainKey) != 32 {
-		return nil, nil, ErrInvalidSecretLength
-	}
-	var chainKey32 [32]byte
-	var messageKey32 [32]byte
-	copy(chainKey32[:], chainKey)
-	copy(messageKey32[:], messageKey)
-	return (*RatchetKey)(&chainKey32), (*MsgKey)(&messageKey32), nil
-}
-
-func (dr *doubleRatchetImpl) Encrypt(mk MsgKey, plaintext []byte, associatedData []byte) ([]byte, error) {
-	key := make([]byte, 80)
-	if n, err := hkdf.KDF(crypto.DefaultHashFunc, mk[:], nil, HKDFSaltAES, key); err != nil {
-		return nil, err
-	} else if n != 80 {
-		return nil, ErrInvalidSecretLength
-	}
-
-	var encKey [32]byte
-	var authKey [32]byte
-	var iv [16]byte
-	copy(encKey[:], key[:32])
-	copy(authKey[:], key[32:64])
-	copy(iv[:], key[64:])
-
-	ciphertext, err := aes256.Encrypt(plaintext, encKey, iv)
+func (dr *doubleRatchetImpl) Decrypt(header Header, ciphertext []byte, associatedData []byte) ([]byte, error) {
+	var (
+		// If no error occurs, dr.currentState will be updated with newState
+		newState = *dr.currentState
+		mk       *MsgKey
+	)
+	// 1. Try to decrypt with skipped message keys
+	plaintext, err := dr.trySkippedMessageKeys(&newState, &header, ciphertext, associatedData)
 	if err != nil {
 		return nil, err
 	}
-
-	// HMAC input is the associated_data prepended to the ciphertext
-	tag := hmac.Hash(crypto.DefaultHashFunc, authKey[:], append(associatedData, ciphertext...))
-	return append(ciphertext, tag...), nil
-}
-
-func (dr *doubleRatchetImpl) Decrypt(mk MsgKey, ciphertext []byte, associatedData []byte) ([]byte, error) {
-	key := make([]byte, 80)
-	if n, err := hkdf.KDF(crypto.DefaultHashFunc, mk[:], nil, HKDFSaltAES, key); err != nil {
-		return nil, err
-	} else if n != 80 {
-		return nil, ErrInvalidSecretLength
+	if plaintext != nil {
+		return plaintext, nil
 	}
 
-	var encKey [32]byte
-	var authKey [32]byte
-	var iv [16]byte
-	copy(encKey[:], key[:32])
-	copy(authKey[:], key[32:64])
-	copy(iv[:], key[64:])
+	// 2. If a new ratchet key has been received, save skipped message keys from the receiving chain and
+	// perform a DH ratchet step
+	if header.RatchetPub != *newState.dhr {
+		// If a new ratchet key has been received
+		if err := dr.skipMessageKeys(&newState, header.Pn); err != nil {
+			return nil, err
+		}
+		if err := dr.dhRatchet(&newState, &header); err != nil {
+			return nil, err
+		}
+	}
 
-	plaintext, err := aes256.Decrypt(ciphertext[:], encKey, iv)
+	// 3. Store skipped message keys from the current receiving chain if needed
+	if err := dr.skipMessageKeys(&newState, header.N); err != nil {
+		return nil, err
+	}
+
+	// 4. Get message key
+	newState.ckr, mk, err = dr.utils.kdfCk(*newState.ckr)
 	if err != nil {
 		return nil, err
 	}
+	newState.nr++
 
-	// Verify the tag
-	tag := hmac.Hash(crypto.DefaultHashFunc, authKey[:], append(associatedData, ciphertext...))
-	if !hmac2.Equal(tag, ciphertext[len(ciphertext)-crypto.DefaultHashBlockSize:]) {
-		return nil, ErrInvalidTag
-	}
+	// 5. Update state
+	dr.currentState = &newState
 
-	return plaintext, nil
-}
-
-func (dr *doubleRatchetImpl) Header(ratchetPub key_ed25519.PublicKey, chainLen MsgIndex, msgNum MsgIndex) (Header, error) {
-	return Header{
-		RatchetPub: ratchetPub,
-		ChainLen:   chainLen,
-		MsgNum:     msgNum,
-	}, nil
-}
-
-func (dr *doubleRatchetImpl) Concat(ad []byte, header Header) ([]byte, error) {
-	headerBytes, err := header.Marshal()
+	// 6. Decrypt
+	adHeader, err := dr.utils.concat(associatedData, header)
 	if err != nil {
 		return nil, err
 	}
-	return append(ad, headerBytes...), nil
+	return dr.utils.decrypt(*mk, ciphertext, adHeader)
 }
 
 func (dr *doubleRatchetImpl) MaxSkip() MsgIndex {
 	return maxSkip
+}
+
+func (dr *doubleRatchetImpl) trySkippedMessageKeys(newState *state, header *Header, ciphertext, AD []byte) ([]byte, error) {
+	if mk, exists := newState.mkSkipped[mkSkippedKey{
+		RatchetPub: header.RatchetPub,
+		N:          header.N,
+	}]; exists {
+		delete(newState.mkSkipped, mkSkippedKey{
+			RatchetPub: header.RatchetPub,
+			N:          header.N,
+		})
+		adHeader, err := dr.utils.concat(AD, *header)
+		if err != nil {
+			return nil, err
+		}
+		return dr.utils.decrypt(*mk, ciphertext, adHeader)
+	}
+	return nil, nil
+}
+
+func (dr *doubleRatchetImpl) skipMessageKeys(newState *state, until MsgIndex) error {
+	if newState.nr+dr.MaxSkip() < until {
+		return ErrSkippingTooManyKeys
+	}
+
+	if newState.ckr != nil {
+		for newState.nr < until {
+			var mk *MsgKey
+			var err error
+			newState.ckr, mk, err = dr.utils.kdfCk(*newState.ckr)
+			if err != nil {
+				return err
+			}
+			newState.mkSkipped[mkSkippedKey{
+				RatchetPub: *newState.dhr,
+				N:          newState.nr,
+			}] = mk
+			newState.nr++
+		}
+	}
+	return nil
+}
+
+func (dr *doubleRatchetImpl) dhRatchet(newState *state, header *Header) error {
+	newState.pn = newState.ns
+	newState.ns = 0
+	newState.nr = 0
+	newState.dhr = &header.RatchetPub
+
+	dhOut, err := dr.utils.dh(newState.dhs.Priv, *newState.dhr)
+	if err != nil {
+		return err
+	}
+
+	rk, ckr, err := dr.utils.kdfRk(newState.rk, *dhOut)
+	if err != nil {
+		return err
+	}
+	newState.rk = *rk
+	newState.ckr = ckr
+
+	dhs, err := dr.utils.generateDH()
+	if err != nil {
+		return err
+	}
+	newState.dhs = *dhs
+
+	dhOut, err = dr.utils.dh(newState.dhs.Priv, *newState.dhr)
+	if err != nil {
+		return err
+	}
+
+	rk, cks, err := dr.utils.kdfRk(newState.rk, *dhOut)
+	if err != nil {
+		return err
+	}
+	newState.rk = *rk
+	newState.cks = cks
+	return nil
 }
