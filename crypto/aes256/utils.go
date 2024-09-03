@@ -4,23 +4,12 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"errors"
-	"io"
 )
 
 var (
 	ErrCiphertextLengthInvalid = errors.New("ciphertext length invalid")
 )
-
-func NewKey() ([]byte, error) {
-	key := make([]byte, 32)
-	_, err := io.ReadFull(rand.Reader, key)
-	if err != nil {
-		return nil, err
-	}
-	return key, nil
-}
 
 // Encrypt encrypts the plaintext using AES-256 in CBC mode with PKCS#7 padding.
 func Encrypt(plaintext []byte, key [32]byte, iv [16]byte) (ciphertext []byte, err error) {
