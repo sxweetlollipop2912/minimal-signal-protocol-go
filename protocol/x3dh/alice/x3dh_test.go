@@ -4,11 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"minimal-signal/crypto/dh25519"
 	"minimal-signal/crypto/hkdf"
 	"minimal-signal/crypto/key_ed25519"
 	"minimal-signal/crypto/signer_schnorr"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPerformKeyAgreement(t *testing.T) {
