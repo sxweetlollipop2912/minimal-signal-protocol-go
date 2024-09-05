@@ -4,7 +4,7 @@ import (
 	"minimal-signal/crypto/key_ed25519"
 )
 
-func GetSecret(APrivKey key_ed25519.PrivateKey, BPubKey key_ed25519.PublicKey) ([]byte, error) {
+func GetSharedSecret(APrivKey key_ed25519.PrivateKey, BPubKey key_ed25519.PublicKey) ([]byte, error) {
 	privScalar, err := APrivKey.ToScalar()
 	if err != nil {
 		return nil, err

@@ -10,7 +10,7 @@ type BobPrekeyBundle struct {
 	OneTimePrekey *key_ed25519.PrivateKey // optional
 }
 
-type AliceKeyBundle struct {
+type ReceivedAliceKeyBundle struct {
 	IdentityKey  key_ed25519.PublicKey
 	EphemeralKey key_ed25519.PublicKey
 }

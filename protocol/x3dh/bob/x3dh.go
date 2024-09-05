@@ -10,27 +10,27 @@ import (
 // - Alice: sender
 // - Bob: receiver
 
-func PerformKeyAgreement(bob *BobPrekeyBundle, alice *AliceKeyBundle) (key []byte, err error) {
+func PerformKeyAgreement(bob *BobPrekeyBundle, alice *ReceivedAliceKeyBundle) (key []byte, err error) {
 	var (
 		sk []byte
 	)
 	// 1. Bob computes the shared secret
-	dh1, err := dh25519.GetSecret(bob.Prekey, alice.IdentityKey)
+	dh1, err := dh25519.GetSharedSecret(bob.Prekey, alice.IdentityKey)
 	if err != nil {
 		return nil, err
 	}
-	dh2, err := dh25519.GetSecret(bob.IdentityKey, alice.EphemeralKey)
+	dh2, err := dh25519.GetSharedSecret(bob.IdentityKey, alice.EphemeralKey)
 	if err != nil {
 		return nil, err
 	}
-	dh3, err := dh25519.GetSecret(bob.Prekey, alice.EphemeralKey)
+	dh3, err := dh25519.GetSharedSecret(bob.Prekey, alice.EphemeralKey)
 	if err != nil {
 		return nil, err
 	}
 
 	var dh4 []byte
 	if bob.OneTimePrekey != nil {
-		dh4, err = dh25519.GetSecret(*bob.OneTimePrekey, alice.EphemeralKey)
+		dh4, err = dh25519.GetSharedSecret(*bob.OneTimePrekey, alice.EphemeralKey)
 		if err != nil {
 			dh4 = nil
 		}
@@ -51,6 +51,7 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, alice *AliceKeyBundle) (key []byt
 	}
 
 	// 2. Bob derives the key
+	// TODO: add padding 0xFF
 	key, err = hkdf.New32BytesKeyFromSecret(sk)
 	if err != nil {
 		return nil, err

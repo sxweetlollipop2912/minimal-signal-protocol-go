@@ -3,10 +3,11 @@ package bob
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"minimal-signal/crypto/dh25519"
 	"minimal-signal/crypto/hkdf"
 	"minimal-signal/crypto/key_ed25519"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPerformKeyAgreement(t *testing.T) {
@@ -47,9 +48,9 @@ func TestPerformKeyAgreement(t *testing.T) {
 			assert.NotEmpty(t, key, "derived key is empty")
 
 			// Simulate Alice deriving the same key by performing the Diffie-Hellman operations
-			dh1, _ := dh25519.GetSecret(aliceIdentityPrivateKey, bobKeys.PrekeyPublicKey)
-			dh2, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, bobKeys.IdentityPublicKey)
-			dh3, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, bobKeys.PrekeyPublicKey)
+			dh1, _ := dh25519.GetSharedSecret(aliceIdentityPrivateKey, bobKeys.PrekeyPublicKey)
+			dh2, _ := dh25519.GetSharedSecret(aliceEphemeralPrivateKey, bobKeys.IdentityPublicKey)
+			dh3, _ := dh25519.GetSharedSecret(aliceEphemeralPrivateKey, bobKeys.PrekeyPublicKey)
 
 			var sk []byte
 			sk = append(sk, dh1...)
@@ -57,7 +58,7 @@ func TestPerformKeyAgreement(t *testing.T) {
 			sk = append(sk, dh3...)
 
 			if tt.withOneTimePrekey {
-				dh4, _ := dh25519.GetSecret(aliceEphemeralPrivateKey, bobKeys.OneTimePublicKey)
+				dh4, _ := dh25519.GetSharedSecret(aliceEphemeralPrivateKey, bobKeys.OneTimePublicKey)
 				sk = append(sk, dh4...)
 			}
 
@@ -134,7 +135,7 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobKeys, error)
 	return bobBundle, bobKeys, nil
 }
 
-func generateAliceKeys() (*AliceKeyBundle, key_ed25519.PrivateKey, key_ed25519.PrivateKey, error) {
+func generateAliceKeys() (*ReceivedAliceKeyBundle, key_ed25519.PrivateKey, key_ed25519.PrivateKey, error) {
 	identityKey, err := key_ed25519.New()
 	if err != nil {
 		return nil, key_ed25519.PrivateKey{}, key_ed25519.PrivateKey{}, err
@@ -155,7 +156,7 @@ func generateAliceKeys() (*AliceKeyBundle, key_ed25519.PrivateKey, key_ed25519.P
 		return nil, key_ed25519.PrivateKey{}, key_ed25519.PrivateKey{}, err
 	}
 
-	aliceBundle := &AliceKeyBundle{
+	aliceBundle := &ReceivedAliceKeyBundle{
 		IdentityKey:  *identityPubKey,
 		EphemeralKey: *ephemeralPubKey,
 	}

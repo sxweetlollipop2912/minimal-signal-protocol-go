@@ -67,9 +67,9 @@ func TestPerformKeyAgreement(t *testing.T) {
 
 				// Simulate Bob's side key derivation
 				alicePubIDKey, _ := aliceIdKey.Public()
-				dh1, _ := dh25519.GetSecret(bobKeys.PrekeyPrivateKey, *alicePubIDKey)
-				dh2, _ := dh25519.GetSecret(bobKeys.IdentityPrivateKey, *ephPubKey)
-				dh3, _ := dh25519.GetSecret(bobKeys.PrekeyPrivateKey, *ephPubKey)
+				dh1, _ := dh25519.GetSharedSecret(bobKeys.PrekeyPrivateKey, *alicePubIDKey)
+				dh2, _ := dh25519.GetSharedSecret(bobKeys.IdentityPrivateKey, *ephPubKey)
+				dh3, _ := dh25519.GetSharedSecret(bobKeys.PrekeyPrivateKey, *ephPubKey)
 
 				var sk []byte
 				sk = append(sk, dh1...)
@@ -77,7 +77,7 @@ func TestPerformKeyAgreement(t *testing.T) {
 				sk = append(sk, dh3...)
 
 				if tt.withOneTimePrekey {
-					dh4, _ := dh25519.GetSecret(bobKeys.OneTimePrivateKey, *ephPubKey)
+					dh4, _ := dh25519.GetSharedSecret(bobKeys.OneTimePrivateKey, *ephPubKey)
 					sk = append(sk, dh4...)
 				}
 
@@ -101,7 +101,7 @@ type BobPrivKeys struct {
 }
 
 // generateBobKeys generates the required keys for Bob and returns both the public keys (for the bundle) and the private keys.
-func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobPrivKeys, error) {
+func generateBobKeys(withOneTimePrekey bool) (*ReceivedBobPrekeyBundle, *BobPrivKeys, error) {
 	identityKey, err := key_ed25519.New()
 	if err != nil {
 		return nil, nil, err
@@ -134,7 +134,7 @@ func generateBobKeys(withOneTimePrekey bool) (*BobPrekeyBundle, *BobPrivKeys, er
 		PrekeyPrivateKey:   *prekey,
 	}
 
-	bobBundle := &BobPrekeyBundle{
+	bobBundle := &ReceivedBobPrekeyBundle{
 		IdentityKey: *identityPubKey,
 		Prekey:      *prekeyPubKey,
 		PrekeySig:   prekeySig,

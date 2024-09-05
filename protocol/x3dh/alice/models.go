@@ -5,7 +5,7 @@ import (
 	"minimal-signal/crypto/signer_schnorr"
 )
 
-type BobPrekeyBundle struct {
+type ReceivedBobPrekeyBundle struct {
 	IdentityKey   key_ed25519.PublicKey
 	Prekey        key_ed25519.PublicKey
 	PrekeySig     []byte
@@ -17,6 +17,6 @@ type AliceKeyBundle struct {
 	EphemeralKey key_ed25519.PrivateKey
 }
 
-func (bob *BobPrekeyBundle) Verify() error {
+func (bob *ReceivedBobPrekeyBundle) Verify() error {
 	return signer_schnorr.Verify(bob.IdentityKey, bob.Prekey[:], bob.PrekeySig)
 }

@@ -11,7 +11,7 @@ import (
 // - Alice: sender
 // - Bob: receiver
 
-func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (key []byte, ephPubKey *key_ed25519.PublicKey, err error) {
+func PerformKeyAgreement(bob *ReceivedBobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (key []byte, ephPubKey *key_ed25519.PublicKey, err error) {
 	var (
 		alice = AliceKeyBundle{
 			IdentityKey: aliceIdKey,
@@ -38,22 +38,22 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey
 	}
 
 	// 3. Alice computes the shared secret
-	dh1, err := dh25519.GetSecret(alice.IdentityKey, bob.Prekey)
+	dh1, err := dh25519.GetSharedSecret(alice.IdentityKey, bob.Prekey)
 	if err != nil {
 		return nil, nil, err
 	}
-	dh2, err := dh25519.GetSecret(alice.EphemeralKey, bob.IdentityKey)
+	dh2, err := dh25519.GetSharedSecret(alice.EphemeralKey, bob.IdentityKey)
 	if err != nil {
 		return nil, nil, err
 	}
-	dh3, err := dh25519.GetSecret(alice.EphemeralKey, bob.Prekey)
+	dh3, err := dh25519.GetSharedSecret(alice.EphemeralKey, bob.Prekey)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var dh4 []byte
 	if bob.OneTimePrekey != nil {
-		if dh4, err = dh25519.GetSecret(alice.EphemeralKey, *bob.OneTimePrekey); err != nil {
+		if dh4, err = dh25519.GetSharedSecret(alice.EphemeralKey, *bob.OneTimePrekey); err != nil {
 			dh4 = nil
 		}
 	}
@@ -77,5 +77,6 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return key, aliceEphPubKeyPtr, nil
 }

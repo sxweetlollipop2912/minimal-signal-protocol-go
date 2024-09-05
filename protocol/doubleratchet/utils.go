@@ -70,7 +70,7 @@ func (dr *doubleRatchetUtilsImpl) generateDH() (*key_ed25519.Pair, error) {
 }
 
 func (dr *doubleRatchetUtilsImpl) dh(privKey key_ed25519.PrivateKey, pubKey key_ed25519.PublicKey) (*RatchetKey, error) {
-	secret, err := dh25519.GetSecret(privKey, pubKey)
+	secret, err := dh25519.GetSharedSecret(privKey, pubKey)
 	if err != nil {
 		return nil, err
 	}
