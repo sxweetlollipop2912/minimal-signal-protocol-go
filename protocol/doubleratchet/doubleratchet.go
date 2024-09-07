@@ -49,7 +49,7 @@ func NewDoubleRatchet(initState *state) DoubleRatchet {
 }
 
 // InitAlice initializes the Double Ratchet for the sender
-func InitAlice(sk RatchetKey, bobDhPubKey key_ed25519.PublicKey) (DoubleRatchet, error) {
+func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (DoubleRatchet, error) {
 	utils := newDoubleRatchetUtils()
 
 	// Init dhs
@@ -59,7 +59,7 @@ func InitAlice(sk RatchetKey, bobDhPubKey key_ed25519.PublicKey) (DoubleRatchet,
 	}
 
 	// Init dhr
-	dhr := bobDhPubKey
+	dhr := bobDHPubKey
 
 	// Init rk, cks
 	kdfRkInput, err := utils.dh(dhs.Priv, dhr)
@@ -81,9 +81,9 @@ func InitAlice(sk RatchetKey, bobDhPubKey key_ed25519.PublicKey) (DoubleRatchet,
 }
 
 // InitBob initializes the Double Ratchet for the receiver
-func InitBob(sk RatchetKey, bobDhKeyPair key_ed25519.Pair) DoubleRatchet {
+func InitBob(sk RatchetKey, bobDHKeyPair key_ed25519.Pair) DoubleRatchet {
 	return NewDoubleRatchet(&state{
-		dhs: bobDhKeyPair,
+		dhs: bobDHKeyPair,
 		rk:  sk,
 		// dhr, cks, ckr, ns, nr, pn, mkSkipped are init as zero values
 	})
