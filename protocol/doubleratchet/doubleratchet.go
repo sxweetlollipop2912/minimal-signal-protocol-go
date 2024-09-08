@@ -9,11 +9,19 @@ const (
 	maxSkip = 1000 // TODO: this is a random value
 )
 
+var (
+	utils = newDoubleRatchetUtils()
+)
+
 type DoubleRatchet interface {
 	// Encrypt is the exported function that performs a symmetric-key ratchet step, then encrypts the message with the
 	// resulting message key. In addition to the message’s plaintext it takes an AD byte sequence which is prepended
 	// to the header to form the associated data for the underlying AEAD encryption.
-	Encrypt(plaintext []byte, associatedData []byte) (header *Header, ciphertext []byte, err error)
+	//
+	// If forwardDHRatchet is true, this function performs a DH ratchet step before the symmetric-key ratchet step.
+	// Don't set to true on first message.
+	// Should set to true in regular intervals.
+	Encrypt(plaintext []byte, associatedData []byte, forwardDHRatchet bool) (header *Header, ciphertext []byte, err error)
 
 	// Decrypt is the exported function that decrypts messages. It does the following:
 	// • If the message corresponds to a skipped message key this function decrypts the message,
@@ -35,7 +43,6 @@ type DoubleRatchet interface {
 // https://signal.org/docs/specifications/doubleratchet/#decrypting-messages
 type doubleRatchetImpl struct {
 	currentState *state
-	utils        doubleRatchetUtils
 }
 
 func NewDoubleRatchet(initState *state) DoubleRatchet {
@@ -44,7 +51,6 @@ func NewDoubleRatchet(initState *state) DoubleRatchet {
 	}
 	return &doubleRatchetImpl{
 		currentState: initState,
-		utils:        newDoubleRatchetUtils(),
 	}
 }
 
@@ -72,10 +78,11 @@ func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (DoubleRatchet,
 	}
 
 	return NewDoubleRatchet(&state{
-		dhs: *dhs,
-		dhr: &dhr,
-		rk:  *rk,
-		cks: cks,
+		dhs:       *dhs,
+		dhr:       &dhr,
+		rk:        *rk,
+		cks:       cks,
+		mkSkipped: make(map[mkSkippedKey]*MsgKey),
 		// ckr, ns, nr, pn, mkSkipped are init as zero values
 	}), nil
 }
@@ -83,20 +90,28 @@ func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (DoubleRatchet,
 // InitBob initializes the Double Ratchet for the receiver
 func InitBob(sk RatchetKey, bobDHKeyPair key_ed25519.Pair) DoubleRatchet {
 	return NewDoubleRatchet(&state{
-		dhs: bobDHKeyPair,
-		rk:  sk,
+		dhs:       bobDHKeyPair,
+		rk:        sk,
+		mkSkipped: make(map[mkSkippedKey]*MsgKey),
 		// dhr, cks, ckr, ns, nr, pn, mkSkipped are init as zero values
 	})
 }
 
-func (dr *doubleRatchetImpl) Encrypt(plaintext []byte, associatedData []byte) (*Header, []byte, error) {
+func (dr *doubleRatchetImpl) Encrypt(plaintext []byte, associatedData []byte, forwardDHRatchet bool) (*Header, []byte, error) {
 	var (
 		mk  *MsgKey
 		err error
 	)
 
+	// 0. If forwardDHRatchet is true, perform a DH ratchet step
+	if forwardDHRatchet {
+		if err := dhRatchetSendChain(dr.currentState); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	// 1. Generate current message key & update chain key
-	dr.currentState.cks, mk, err = dr.utils.kdfCk(*dr.currentState.cks)
+	dr.currentState.cks, mk, err = utils.kdfCk(*dr.currentState.cks)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -112,11 +127,11 @@ func (dr *doubleRatchetImpl) Encrypt(plaintext []byte, associatedData []byte) (*
 	dr.currentState.ns++
 
 	// 4. Encrypt plaintext w/ header + associatedData
-	ad, err := dr.utils.concat(associatedData, header)
+	ad, err := utils.concat(associatedData, header)
 	if err != nil {
 		return nil, nil, err
 	}
-	ciphertext, err := dr.utils.encrypt(*mk, plaintext, ad)
+	ciphertext, err := utils.encrypt(*mk, plaintext, ad)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -131,7 +146,7 @@ func (dr *doubleRatchetImpl) Decrypt(header Header, ciphertext []byte, associate
 		mk       *MsgKey
 	)
 	// 1. Try to decrypt with skipped message keys
-	plaintext, err := dr.trySkippedMessageKeys(&newState, &header, ciphertext, associatedData)
+	plaintext, err := trySkippedMessageKeys(&newState, &header, ciphertext, associatedData)
 	if err != nil {
 		return nil, err
 	}
@@ -141,12 +156,17 @@ func (dr *doubleRatchetImpl) Decrypt(header Header, ciphertext []byte, associate
 
 	// 2. If a new ratchet key has been received, save skipped message keys from the receiving chain and
 	// perform a DH ratchet step
-	if header.RatchetPub != *newState.dhr {
+	if newState.dhr == nil {
+		if err := dhRatchetReceiveChain(&newState, &header); err != nil {
+			return nil, err
+		}
+
+	} else if header.RatchetPub != *newState.dhr {
 		// If a new ratchet key has been received
 		if err := dr.skipMessageKeys(&newState, header.Pn); err != nil {
 			return nil, err
 		}
-		if err := dr.dhRatchet(&newState, &header); err != nil {
+		if err := dhRatchetReceiveChain(&newState, &header); err != nil {
 			return nil, err
 		}
 	}
@@ -157,7 +177,7 @@ func (dr *doubleRatchetImpl) Decrypt(header Header, ciphertext []byte, associate
 	}
 
 	// 4. Get message key
-	newState.ckr, mk, err = dr.utils.kdfCk(*newState.ckr)
+	newState.ckr, mk, err = utils.kdfCk(*newState.ckr)
 	if err != nil {
 		return nil, err
 	}
@@ -167,33 +187,15 @@ func (dr *doubleRatchetImpl) Decrypt(header Header, ciphertext []byte, associate
 	dr.currentState = &newState
 
 	// 6. Decrypt
-	adHeader, err := dr.utils.concat(associatedData, header)
+	adHeader, err := utils.concat(associatedData, header)
 	if err != nil {
 		return nil, err
 	}
-	return dr.utils.decrypt(*mk, ciphertext, adHeader)
+	return utils.decrypt(*mk, ciphertext, adHeader)
 }
 
 func (dr *doubleRatchetImpl) MaxSkip() MsgIndex {
 	return maxSkip
-}
-
-func (dr *doubleRatchetImpl) trySkippedMessageKeys(newState *state, header *Header, ciphertext, AD []byte) ([]byte, error) {
-	if mk, exists := newState.mkSkipped[mkSkippedKey{
-		RatchetPub: header.RatchetPub,
-		N:          header.N,
-	}]; exists {
-		delete(newState.mkSkipped, mkSkippedKey{
-			RatchetPub: header.RatchetPub,
-			N:          header.N,
-		})
-		adHeader, err := dr.utils.concat(AD, *header)
-		if err != nil {
-			return nil, err
-		}
-		return dr.utils.decrypt(*mk, ciphertext, adHeader)
-	}
-	return nil, nil
 }
 
 func (dr *doubleRatchetImpl) skipMessageKeys(newState *state, until MsgIndex) error {
@@ -205,7 +207,7 @@ func (dr *doubleRatchetImpl) skipMessageKeys(newState *state, until MsgIndex) er
 		for newState.nr < until {
 			var mk *MsgKey
 			var err error
-			newState.ckr, mk, err = dr.utils.kdfCk(*newState.ckr)
+			newState.ckr, mk, err = utils.kdfCk(*newState.ckr)
 			if err != nil {
 				return err
 			}
@@ -219,36 +221,58 @@ func (dr *doubleRatchetImpl) skipMessageKeys(newState *state, until MsgIndex) er
 	return nil
 }
 
-func (dr *doubleRatchetImpl) dhRatchet(newState *state, header *Header) error {
-	newState.pn = newState.ns
-	newState.ns = 0
+func trySkippedMessageKeys(newState *state, header *Header, ciphertext, AD []byte) ([]byte, error) {
+	if mk, exists := newState.mkSkipped[mkSkippedKey{
+		RatchetPub: header.RatchetPub,
+		N:          header.N,
+	}]; exists {
+		delete(newState.mkSkipped, mkSkippedKey{
+			RatchetPub: header.RatchetPub,
+			N:          header.N,
+		})
+		adHeader, err := utils.concat(AD, *header)
+		if err != nil {
+			return nil, err
+		}
+		return utils.decrypt(*mk, ciphertext, adHeader)
+	}
+	return nil, nil
+}
+
+func dhRatchetReceiveChain(newState *state, header *Header) error {
 	newState.nr = 0
 	newState.dhr = &header.RatchetPub
 
-	dhOut, err := dr.utils.dh(newState.dhs.Priv, *newState.dhr)
+	dhOut, err := utils.dh(newState.dhs.Priv, *newState.dhr)
 	if err != nil {
 		return err
 	}
 
-	rk, ckr, err := dr.utils.kdfRk(newState.rk, *dhOut)
+	rk, ckr, err := utils.kdfRk(newState.rk, *dhOut)
 	if err != nil {
 		return err
 	}
 	newState.rk = *rk
 	newState.ckr = ckr
+	return nil
+}
 
-	dhs, err := dr.utils.generateDH()
+func dhRatchetSendChain(newState *state) error {
+	newState.pn = newState.ns
+	newState.ns = 0
+
+	dhs, err := utils.generateDH()
 	if err != nil {
 		return err
 	}
 	newState.dhs = *dhs
 
-	dhOut, err = dr.utils.dh(newState.dhs.Priv, *newState.dhr)
+	dhOut, err := utils.dh(newState.dhs.Priv, *newState.dhr)
 	if err != nil {
 		return err
 	}
 
-	rk, cks, err := dr.utils.kdfRk(newState.rk, *dhOut)
+	rk, cks, err := utils.kdfRk(newState.rk, *dhOut)
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,7 @@ import (
 // - Alice: sender
 // - Bob: receiver
 
-func PerformKeyAgreement(bob *ReceivedBobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (key []byte, ephPubKey *key_ed25519.PublicKey, err error) {
+func PerformKeyAgreement(bob *ReceivedBobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (sharedKey []byte, ephPubKey *key_ed25519.PublicKey, err error) {
 	var (
 		alice = AliceKeyBundle{
 			IdentityKey: aliceIdKey,
@@ -73,10 +73,10 @@ func PerformKeyAgreement(bob *ReceivedBobPrekeyBundle, aliceIdKey key_ed25519.Pr
 	}
 
 	// 4. Alice derives the key
-	key, err = hkdf.New32BytesKeyFromSecret(sk)
+	sharedKey, err = hkdf.New32BytesKeyFromSecret(sk)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return key, aliceEphPubKeyPtr, nil
+	return sharedKey, aliceEphPubKeyPtr, nil
 }

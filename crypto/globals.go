@@ -1,9 +1,11 @@
 package crypto
 
-import (
-	"crypto/sha256"
-	"hash"
+import "crypto/sha256"
+
+var (
+	DefaultHashFunc = sha256.New
 )
 
-var DefaultHashFunc func() hash.Hash = sha256.New
-var DefaultHashBlockSize int = sha256.BlockSize
+const (
+	HMACSHA256Size = 32
+)

@@ -152,15 +152,17 @@ func (dr *doubleRatchetUtilsImpl) decrypt(mk MsgKey, ciphertext []byte, associat
 	copy(authKey[:], key[32:64])
 	copy(iv[:], key[64:])
 
+	// Verify the tag
+	tagFromCiphertext := ciphertext[len(ciphertext)-crypto.HMACSHA256Size:]
+	ciphertext = ciphertext[:len(ciphertext)-crypto.HMACSHA256Size]
+	tag := hmac.Hash(crypto.DefaultHashFunc, authKey[:], append(associatedData, ciphertext...))
+	if !hmac2.Equal(tag, tagFromCiphertext) {
+		return nil, ErrInvalidTag
+	}
+
 	plaintext, err := aes256.Decrypt(ciphertext[:], encKey, iv)
 	if err != nil {
 		return nil, err
-	}
-
-	// Verify the tag
-	tag := hmac.Hash(crypto.DefaultHashFunc, authKey[:], append(associatedData, ciphertext...))
-	if !hmac2.Equal(tag, ciphertext[len(ciphertext)-crypto.DefaultHashBlockSize:]) {
-		return nil, ErrInvalidTag
 	}
 
 	return plaintext, nil

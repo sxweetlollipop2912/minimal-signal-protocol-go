@@ -10,7 +10,7 @@ import (
 // - Alice: sender
 // - Bob: receiver
 
-func PerformKeyAgreement(bob *BobPrekeyBundle, alice *ReceivedAliceKeyBundle) (key []byte, err error) {
+func PerformKeyAgreement(bob *BobPrekeyBundle, alice *ReceivedAliceKeyBundle) (sharedKey []byte, err error) {
 	var (
 		sk []byte
 	)
@@ -51,9 +51,9 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, alice *ReceivedAliceKeyBundle) (k
 	}
 
 	// 2. Bob derives the key
-	key, err = hkdf.New32BytesKeyFromSecret(sk)
+	sharedKey, err = hkdf.New32BytesKeyFromSecret(sk)
 	if err != nil {
 		return nil, err
 	}
-	return key, nil
+	return sharedKey, nil
 }
