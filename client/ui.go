@@ -3,8 +3,9 @@ package client
 import (
 	"errors"
 	"fmt"
-	"github.com/jroimartin/gocui"
 	"strings"
+
+	"github.com/jroimartin/gocui"
 )
 
 // InitGui initializes the gocui screen
@@ -32,6 +33,10 @@ func (app *ChatApp) PromptRecipientID() error {
 
 		if err := app.Gui.SetKeybinding("input", gocui.KeyEnter, gocui.ModNone, app.SendMessageHandler); err != nil {
 			logger.Fatalf("Error setting keybinding for input: %v", err)
+		}
+
+		if err := app.publishKeys(); err != nil {
+			logger.Fatalf("Error publishing keys: %v", err)
 		}
 
 		if err := app.connectToWebSocket(); err != nil {

@@ -3,9 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"minimal-signal/client"
 	"os"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/jroimartin/gocui"
 )

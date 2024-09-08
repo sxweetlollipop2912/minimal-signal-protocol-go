@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"minimal-signal/protocol/x3dh/bob"
+	"net/http"
+	"sync"
+
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
-	"net/http"
-	"sync"
 )
 
 // Message struct for incoming/outgoing messages
@@ -158,4 +160,28 @@ func (s *Server) retrieveQueuedMessages(userID string, ws *websocket.Conn) {
 
 	// Clear the queue after sending
 	s.redisClient.Del(s.ctx, fmt.Sprintf("messages:%s", userID))
+}
+
+func (s *Server) HandlePublishKeys(_ http.ResponseWriter, r *http.Request) {
+	// Extract userId from the URL query
+	userID := r.URL.Query().Get("userId")
+	if userID == "" {
+		s.logger.Error("No userId provided in the query")
+		return
+	}
+
+	// Extract the public key from the request body
+	var userKeyBundle bob.BobPrekeyBundle
+	if err := json.NewDecoder(r.Body).Decode(&userKeyBundle); err != nil {
+		s.logger.Errorf("Error decoding keys for user %s: %v", userID, err)
+		return
+	}
+
+	// Publish the public key to Redis
+	if err := s.redisClient.Set(s.ctx, fmt.Sprintf("publicKey:%s", userID), userKeyBundle, 0).Err(); err != nil {
+		s.logger.Errorf("Error publishing keys for user %s: %v", userID, err)
+		return
+	}
+
+	s.logger.Infof("Public key published for user %s", userID)
 }

@@ -21,7 +21,7 @@ func New32BytesKeyFromSecret(secret []byte) ([]byte, error) {
 	paddedSecret := append(padding, secret...)
 
 	// Create an HKDF reader using SHA-256 as the hash function
-	hkdfReader := hkdf.New(crypto.DefaultHashFunc, paddedSecret, nil, configs.HKDF_INFO)
+	hkdfReader := hkdf.New(crypto.DefaultHashFunc, paddedSecret, nil, configs.HKDFInfo)
 
 	// Create a buffer to hold the derived key
 	key := make([]byte, 32)

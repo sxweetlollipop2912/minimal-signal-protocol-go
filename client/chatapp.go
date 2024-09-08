@@ -1,12 +1,17 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"minimal-signal/configs"
+	"minimal-signal/protocol/x3dh/bob"
+	"net/http"
+	"sync"
+
 	"github.com/gorilla/websocket"
 	"github.com/jroimartin/gocui"
 	"github.com/sirupsen/logrus"
-	"sync"
 )
 
 var logger = logrus.New()
@@ -19,13 +24,14 @@ type Message struct {
 }
 
 type ChatApp struct {
-	Gui         *gocui.Gui
-	recipientID string
-	messages    []string
-	wsConn      *websocket.Conn
-	messageLock sync.Mutex
-	userID      string
-	wg          sync.WaitGroup
+	Gui           *gocui.Gui
+	recipientID   string
+	messages      []string
+	wsConn        *websocket.Conn
+	messageLock   sync.Mutex
+	userID        string
+	wg            sync.WaitGroup
+	userKeyBundle bob.BobPrekeyBundle
 }
 
 // NewChatApp initializes a new ChatApp
@@ -35,8 +41,8 @@ func NewChatApp(userID string) *ChatApp {
 
 // connectToWebSocket connects to the WebSocket server
 func (app *ChatApp) connectToWebSocket() error {
-	u := fmt.Sprintf("ws://localhost:8080/ws?userId=%s", app.userID)
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	serverUrl := fmt.Sprintf("ws://%s%s?userId=%s", configs.ServerAddress, configs.WebSocketPath, app.userID)
+	conn, _, err := websocket.DefaultDialer.Dial(serverUrl, nil)
 	if err != nil {
 		return fmt.Errorf("failed to connect to WebSocket server: %w", err)
 	}
@@ -108,4 +114,26 @@ func (app *ChatApp) quit(_ *gocui.Gui, _ *gocui.View) error {
 	}
 	app.wg.Wait()
 	return gocui.ErrQuit
+}
+
+// publishKeys publishes Bob's keys to the server
+func (app *ChatApp) publishKeys() error {
+	serverURL := fmt.Sprintf("http://%s%s?userId=%s", configs.ServerAddress, configs.PublishKeysPath, app.userID)
+
+	payloadBytes, err := json.Marshal(app.userKeyBundle)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %v", err)
+	}
+
+	resp, err := http.Post(serverURL, "application/json", bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned non-OK status: %v", resp.Status)
+	}
+
+	return nil
 }
