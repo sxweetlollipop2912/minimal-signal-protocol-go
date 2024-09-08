@@ -51,7 +51,6 @@ func PerformKeyAgreement(bob *BobPrekeyBundle, alice *ReceivedAliceKeyBundle) (k
 	}
 
 	// 2. Bob derives the key
-	// TODO: add padding 0xFF
 	key, err = hkdf.New32BytesKeyFromSecret(sk)
 	if err != nil {
 		return nil, err

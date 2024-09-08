@@ -11,8 +11,17 @@ import (
 
 // New32BytesKeyFromSecret derives a new 32-bit key from a secret using HKDF
 func New32BytesKeyFromSecret(secret []byte) ([]byte, error) {
+	// X25519 requires 32 bytes of 0xFF for cryptographic domain separation.
+	padding := make([]byte, 32)
+	for i := range padding {
+		padding[i] = 0xFF
+	}
+
+	// Concatenate the padding with the secret
+	paddedSecret := append(padding, secret...)
+
 	// Create an HKDF reader using SHA-256 as the hash function
-	hkdfReader := hkdf.New(crypto.DefaultHashFunc, secret, nil, configs.HKDF_INFO)
+	hkdfReader := hkdf.New(crypto.DefaultHashFunc, paddedSecret, nil, configs.HKDF_INFO)
 
 	// Create a buffer to hold the derived key
 	key := make([]byte, 32)
