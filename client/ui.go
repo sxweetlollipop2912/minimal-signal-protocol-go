@@ -35,10 +35,6 @@ func (app *ChatApp) PromptRecipientID() error {
 			logger.Fatalf("Error setting keybinding for input: %v", err)
 		}
 
-		if err := app.publishKeys(); err != nil {
-			logger.Fatalf("Error publishing keys: %v", err)
-		}
-
 		if err := app.connectToWebSocket(); err != nil {
 			logger.Fatalf("Error connecting to WebSocket server: %v", err)
 		}

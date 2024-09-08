@@ -35,8 +35,8 @@ type ChatApp struct {
 }
 
 // NewChatApp initializes a new ChatApp
-func NewChatApp(userID string) *ChatApp {
-	return &ChatApp{userID: userID}
+func NewChatApp(userID string, userKeyBundle *bob.BobPrekeyBundle) *ChatApp {
+	return &ChatApp{userID: userID, userKeyBundle: *userKeyBundle}
 }
 
 // connectToWebSocket connects to the WebSocket server
@@ -117,10 +117,15 @@ func (app *ChatApp) quit(_ *gocui.Gui, _ *gocui.View) error {
 }
 
 // publishKeys publishes Bob's keys to the server
-func (app *ChatApp) publishKeys() error {
+func (app *ChatApp) PublishKeys() error {
 	serverURL := fmt.Sprintf("http://%s%s?userId=%s", configs.ServerAddress, configs.PublishKeysPath, app.userID)
 
-	payloadBytes, err := json.Marshal(app.userKeyBundle)
+	payload, err := app.userKeyBundle.ToPublicBundle()
+	if err != nil {
+		return fmt.Errorf("failed to convert keys to public bundle: %v", err)
+	}
+
+	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %v", err)
 	}

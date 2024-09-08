@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"minimal-signal/protocol/x3dh/bob"
+	"minimal-signal/protocol/x3dh/alice"
 	"net/http"
 	"sync"
 
@@ -171,14 +171,14 @@ func (s *Server) HandlePublishKeys(_ http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract the public key from the request body
-	var userKeyBundle bob.BobPrekeyBundle
-	if err := json.NewDecoder(r.Body).Decode(&userKeyBundle); err != nil {
-		s.logger.Errorf("Error decoding keys for user %s: %v", userID, err)
+	var userPublicKeyBundle alice.ReceivedBobPrekeyBundle
+	if err := json.NewDecoder(r.Body).Decode(&userPublicKeyBundle); err != nil {
+		s.logger.Errorf("Error decoding keys for user %s: %v %s", userID, err, r.Body)
 		return
 	}
 
 	// Publish the public key to Redis
-	if err := s.redisClient.Set(s.ctx, fmt.Sprintf("publicKey:%s", userID), userKeyBundle, 0).Err(); err != nil {
+	if err := s.redisClient.Set(s.ctx, fmt.Sprintf("publicKey:%s", userID), userPublicKeyBundle, 0).Err(); err != nil {
 		s.logger.Errorf("Error publishing keys for user %s: %v", userID, err)
 		return
 	}
