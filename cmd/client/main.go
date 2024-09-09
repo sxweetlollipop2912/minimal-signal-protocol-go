@@ -4,10 +4,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/jroimartin/gocui"
 	"minimal-signal/client"
 	"minimal-signal/protocol/x3dh/bob"
 	"os"
+
+	"github.com/jroimartin/gocui"
 
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
