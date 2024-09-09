@@ -12,11 +12,11 @@ type (
 )
 
 type Header struct {
-	RatchetPub key_ed25519.PublicKey
+	RatchetPub key_ed25519.PublicKey `json:"ratchet_pub" validate:"required"`
 	// Pn is the number of messages in previous chain
-	Pn MsgIndex
+	Pn MsgIndex `json:"pn" validate:"required"`
 	// N is the message number
-	N MsgIndex
+	N MsgIndex `json:"n" validate:"required"`
 }
 
 func UnmarshalHeader(data []byte) (*Header, error) {

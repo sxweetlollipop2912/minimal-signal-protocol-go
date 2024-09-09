@@ -35,14 +35,6 @@ func (app *ChatApp) PromptRecipientID() error {
 			logger.Fatalf("Error setting keybinding for input: %v", err)
 		}
 
-		recipientKeys, err := app.GetKeys(app.recipientID)
-		if err != nil {
-			logger.Fatalf("Error getting recipient keys: %v", err)
-		}
-
-		logger.Infof("Recipient keys: %v", recipientKeys)
-		// TODO: Add recipient keys to the chatApp
-
 		if err := app.connectToWebSocket(); err != nil {
 			logger.Fatalf("Error connecting to WebSocket server: %v", err)
 		}
@@ -70,16 +62,27 @@ func (app *ChatApp) UpdateMessages(g *gocui.Gui) error {
 // SendMessageHandler handles sending messages on Enter press
 func (app *ChatApp) SendMessageHandler(g *gocui.Gui, v *gocui.View) error {
 	message := strings.TrimSpace(v.Buffer())
-	if message != "" {
-		if err := app.sendMessage(message); err != nil {
-			logger.Errorf("Error sending message: %v", err)
-		}
-
-		app.messages = append(app.messages, "[You] "+message)
-		v.Clear()
-		v.SetCursor(0, 0)
-		app.UpdateMessages(g)
+	if message == "" {
+		return nil
 	}
+
+	// Encrypt message
+	// TODO: Forward dh ratchet regularly
+	ad := app.getADBytes()
+	header, encryptedMessage, err := app.ratchet.Encrypt([]byte(message), ad[:], false)
+	if err != nil {
+		logger.Errorf("Error encrypting message: %v", err)
+		return err
+	}
+
+	if err := app.sendMessage(encryptedMessage, *header); err != nil {
+		logger.Errorf("Error sending message: %v", err)
+	}
+
+	app.messages = append(app.messages, "[You] "+message)
+	v.Clear()
+	v.SetCursor(0, 0)
+	app.UpdateMessages(g)
 	return nil
 }
 

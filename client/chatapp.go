@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"minimal-signal/configs"
+	"minimal-signal/crypto/key_ed25519"
+	"minimal-signal/protocol/doubleratchet"
 	"minimal-signal/protocol/x3dh/alice"
 	"minimal-signal/protocol/x3dh/bob"
 	"net/http"
@@ -17,30 +19,29 @@ import (
 
 var logger = logrus.New()
 
-// Message struct for sending/receiving JSON
-type Message struct {
-	From    string `json:"from" validate:"required"`
-	To      string `json:"to" validate:"required"`
-	Message string `json:"message" validate:"required"`
-}
-
 type ChatApp struct {
-	Gui           *gocui.Gui
-	recipientID   string
-	messages      []string
-	wsConn        *websocket.Conn
-	messageLock   sync.Mutex
-	userID        string
-	wg            sync.WaitGroup
-	userKeyBundle bob.BobPrekeyBundle
+	Gui         *gocui.Gui
+	recipientID string
+	messages    []string
+	wsConn      *websocket.Conn
+	messageLock sync.Mutex
+	userID      string
+	wg          sync.WaitGroup
+
+	// crypto stuff
+	userPrivKeyBundle bob.BobPrekeyBundle
+	otherIDKey        key_ed25519.PublicKey
+	ratchet           doubleratchet.DoubleRatchet
+	initHandshake     X3DHHandshakeBundle
 }
 
 // NewChatApp initializes a new ChatApp
 func NewChatApp(userID string, userKeyBundle *bob.BobPrekeyBundle) *ChatApp {
-	return &ChatApp{userID: userID, userKeyBundle: *userKeyBundle}
+	return &ChatApp{userID: userID, userPrivKeyBundle: *userKeyBundle}
 }
 
-// connectToWebSocket connects to the WebSocket server
+// connectToWebSocket connects to the WebSocket server.
+// Already has recipientID set.
 func (app *ChatApp) connectToWebSocket() error {
 	serverUrl := fmt.Sprintf("ws://%s%s?userId=%s", configs.ServerAddress, configs.WebSocketPath, app.userID)
 	conn, _, err := websocket.DefaultDialer.Dial(serverUrl, nil)
@@ -49,12 +50,47 @@ func (app *ChatApp) connectToWebSocket() error {
 	}
 	app.wsConn = conn
 
+	// handshake
+	if err := app.signalHandshake(); err != nil {
+		return fmt.Errorf("failed to perform handshake: %w", err)
+	}
+
 	app.wg.Add(1)
 	go func() {
 		defer app.wg.Done()
 		app.listenForMessages()
 	}()
 
+	return nil
+}
+
+// signalHandshake performs the key agreement protocol and init ratchet.
+// Must already have recipientID set.
+// Postcondition: ratchets are established
+func (app *ChatApp) signalHandshake() error {
+	// Get other's keys from server
+	theirKeys, err := app.GetKeys(app.recipientID)
+	if err != nil {
+		logger.Fatalf("Error getting recipient keys: %v", err)
+	}
+	app.otherIDKey = theirKeys.IdentityKey
+
+	// X3DH
+	sharedKey, pubEphKey, err := alice.PerformKeyAgreement(theirKeys, app.userPrivKeyBundle.IdentityKey)
+	if err != nil {
+		return fmt.Errorf("failed to perform key agreement: %w", err)
+	}
+	var ratchetKey [32]byte
+	copy(ratchetKey[:], sharedKey)
+	app.ratchet, err = doubleratchet.InitAlice(ratchetKey, theirKeys.Prekey)
+	if err != nil {
+		return fmt.Errorf("failed to init ratchet: %w", err)
+	}
+
+	app.initHandshake = X3DHHandshakeBundle{
+		EphPubKey:     *pubEphKey,
+		OneTimePubKey: theirKeys.OneTimePrekey,
+	}
 	return nil
 }
 
@@ -67,7 +103,7 @@ func (app *ChatApp) listenForMessages() {
 			return
 		}
 
-		var msg Message
+		var msg MessageBundle
 		if err := json.Unmarshal(msgBytes, &msg); err != nil {
 			logger.Errorf("Error unmarshalling message: %v", err)
 			continue
@@ -84,15 +120,18 @@ func (app *ChatApp) listenForMessages() {
 }
 
 // sendMessage sends a message to the WebSocket server in JSON format
-func (app *ChatApp) sendMessage(message string) error {
+func (app *ChatApp) sendMessage(message []byte, header doubleratchet.Header) error {
 	if app.wsConn == nil {
 		return fmt.Errorf("WebSocket connection not established")
 	}
 
-	msg := Message{
-		From:    app.userID,
-		To:      app.recipientID,
-		Message: message,
+	msg := MessageBundle{
+		From:      app.userID,
+		To:        app.recipientID,
+		Message:   message,
+		Header:    header,
+		AD:        app.getADBytes(),
+		Handshake: app.initHandshake,
 	}
 
 	msgJSON, err := json.Marshal(msg)
@@ -117,11 +156,11 @@ func (app *ChatApp) quit(_ *gocui.Gui, _ *gocui.View) error {
 	return gocui.ErrQuit
 }
 
-// publishKeys publishes Bob's keys to the server
+// PostKeys publishes Bob's keys to the server
 func (app *ChatApp) PostKeys() error {
 	serverURL := fmt.Sprintf("http://%s%s/%s", configs.ServerAddress, configs.PublishKeysPath, app.userID)
 
-	payload, err := app.userKeyBundle.ToPublicBundle()
+	payload, err := app.userPrivKeyBundle.ToPublicBundle()
 	if err != nil {
 		return fmt.Errorf("failed to convert keys to public bundle: %v", err)
 	}
@@ -163,4 +202,11 @@ func (app *ChatApp) GetKeys(recipientID string) (*alice.BobPublicPrekeyBundle, e
 	}
 
 	return &publicPrekeyBundle, nil
+}
+
+func (app *ChatApp) getADBytes() [64]byte {
+	var adBytes [64]byte
+	copy(adBytes[:32], app.userPrivKeyBundle.IdentityKey[:])
+	copy(adBytes[32:], app.otherIDKey[:])
+	return adBytes
 }
