@@ -27,5 +27,5 @@ func (bob ReceivedBobPrekeyBundle) MarshalBinary() ([]byte, error) {
 }
 
 func (bob ReceivedBobPrekeyBundle) UnmarshalBinary(data []byte) error {
-	return json.Unmarshal(data, bob)
+	return json.Unmarshal(data, &bob)
 }
