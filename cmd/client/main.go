@@ -4,13 +4,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/jroimartin/gocui"
 	"minimal-signal/client"
 	"minimal-signal/protocol/x3dh/bob"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
-
-	"github.com/jroimartin/gocui"
 )
 
 var logger = logrus.New()
@@ -21,6 +21,15 @@ func main() {
 		return
 	}
 	userID := os.Args[1]
+
+	// TODO: Debug
+	if userID == "alice" {
+		godotenv.Load(".env.alice")
+	} else if userID == "bob" {
+		godotenv.Load(".env.bob")
+	} else {
+		godotenv.Load(".env")
+	}
 
 	identityKey, err := decodeHexTo32BytesArray(os.Getenv("IDENTITY_KEY"))
 	if err != nil {

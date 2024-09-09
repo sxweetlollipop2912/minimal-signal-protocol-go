@@ -162,11 +162,12 @@ func (s *Server) retrieveQueuedMessages(userID string, ws *websocket.Conn) {
 	s.redisClient.Del(s.ctx, fmt.Sprintf("messages:%s", userID))
 }
 
-func (s *Server) HandlePublishKeys(_ http.ResponseWriter, r *http.Request) {
+func (s *Server) HandlePublishKeys(w http.ResponseWriter, r *http.Request) {
 	// Extract userId from the URL query
 	userID := r.URL.Query().Get("userId")
 	if userID == "" {
 		s.logger.Error("No userId provided in the query")
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -174,14 +175,17 @@ func (s *Server) HandlePublishKeys(_ http.ResponseWriter, r *http.Request) {
 	var userPublicKeyBundle alice.ReceivedBobPrekeyBundle
 	if err := json.NewDecoder(r.Body).Decode(&userPublicKeyBundle); err != nil {
 		s.logger.Errorf("Error decoding keys for user %s: %v %s", userID, err, r.Body)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	// Publish the public key to Redis
 	if err := s.redisClient.Set(s.ctx, fmt.Sprintf("publicKey:%s", userID), userPublicKeyBundle, 0).Err(); err != nil {
 		s.logger.Errorf("Error publishing keys for user %s: %v", userID, err)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	s.logger.Infof("Public key published for user %s", userID)
+	w.WriteHeader(http.StatusOK)
 }
