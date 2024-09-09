@@ -35,6 +35,14 @@ func (app *ChatApp) PromptRecipientID() error {
 			logger.Fatalf("Error setting keybinding for input: %v", err)
 		}
 
+		recipientKeys, err := app.GetKeys(app.recipientID)
+		if err != nil {
+			logger.Fatalf("Error getting recipient keys: %v", err)
+		}
+
+		logger.Infof("Recipient keys: %v", recipientKeys)
+		// TODO: Add recipient keys to the chatApp
+
 		if err := app.connectToWebSocket(); err != nil {
 			logger.Fatalf("Error connecting to WebSocket server: %v", err)
 		}

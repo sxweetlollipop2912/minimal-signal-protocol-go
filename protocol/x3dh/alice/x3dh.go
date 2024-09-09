@@ -11,9 +11,9 @@ import (
 // - Alice: sender
 // - Bob: receiver
 
-func PerformKeyAgreement(bob *ReceivedBobPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (sharedKey []byte, ephPubKey *key_ed25519.PublicKey, err error) {
+func PerformKeyAgreement(bob *BobPublicPrekeyBundle, aliceIdKey key_ed25519.PrivateKey) (sharedKey []byte, ephPubKey *key_ed25519.PublicKey, err error) {
 	var (
-		alice = AliceKeyBundle{
+		alice = aliceKeyBundle{
 			IdentityKey: aliceIdKey,
 		}
 		aliceEphPubKeyPtr *key_ed25519.PublicKey

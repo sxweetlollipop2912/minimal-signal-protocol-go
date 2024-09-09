@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"minimal-signal/configs"
+	"minimal-signal/protocol/x3dh/alice"
 	"minimal-signal/protocol/x3dh/bob"
 	"net/http"
 	"sync"
@@ -117,8 +118,8 @@ func (app *ChatApp) quit(_ *gocui.Gui, _ *gocui.View) error {
 }
 
 // publishKeys publishes Bob's keys to the server
-func (app *ChatApp) PublishKeys() error {
-	serverURL := fmt.Sprintf("http://%s%s?userId=%s", configs.ServerAddress, configs.PublishKeysPath, app.userID)
+func (app *ChatApp) PostKeys() error {
+	serverURL := fmt.Sprintf("http://%s%s/%s", configs.ServerAddress, configs.PublishKeysPath, app.userID)
 
 	payload, err := app.userKeyBundle.ToPublicBundle()
 	if err != nil {
@@ -141,4 +142,25 @@ func (app *ChatApp) PublishKeys() error {
 	}
 
 	return nil
+}
+
+func (app *ChatApp) GetKeys(recipientID string) (*alice.BobPublicPrekeyBundle, error) {
+	serverURL := fmt.Sprintf("http://%s%s/%s", configs.ServerAddress, configs.PublishKeysPath, recipientID)
+
+	resp, err := http.Get(serverURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("server returned non-OK status: %v", resp.Status)
+	}
+
+	var publicPrekeyBundle alice.BobPublicPrekeyBundle
+	if err := json.NewDecoder(resp.Body).Decode(&publicPrekeyBundle); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	return &publicPrekeyBundle, nil
 }

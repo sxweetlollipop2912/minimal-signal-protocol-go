@@ -59,7 +59,7 @@ func main() {
 		logger.Fatalf("Error initializing gocui interface: %v", err)
 	}
 
-	if err := chatApp.PublishKeys(); err != nil {
+	if err := chatApp.PostKeys(); err != nil {
 		logger.Fatalf("Error publishing keys: %v", err)
 	}
 

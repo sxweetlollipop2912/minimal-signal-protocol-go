@@ -18,15 +18,15 @@ type ReceivedAliceKeyBundle struct {
 	EphemeralKey key_ed25519.PublicKey
 }
 
-func (bob *BobPrekeyBundle) ToPublicBundle() (alice.ReceivedBobPrekeyBundle, error) {
+func (bob *BobPrekeyBundle) ToPublicBundle() (alice.BobPublicPrekeyBundle, error) {
 	identityKeyPub, err := bob.IdentityKey.Public()
 	if err != nil {
-		return alice.ReceivedBobPrekeyBundle{}, fmt.Errorf("failed to get public identity key: %w", err)
+		return alice.BobPublicPrekeyBundle{}, fmt.Errorf("failed to get public identity key: %w", err)
 	}
 
 	prekeyPub, err := bob.Prekey.Public()
 	if err != nil {
-		return alice.ReceivedBobPrekeyBundle{}, fmt.Errorf("failed to get public prekey: %w", err)
+		return alice.BobPublicPrekeyBundle{}, fmt.Errorf("failed to get public prekey: %w", err)
 	}
 
 	// var oneTimePrekeyPub *key_ed25519.PublicKey
@@ -39,10 +39,10 @@ func (bob *BobPrekeyBundle) ToPublicBundle() (alice.ReceivedBobPrekeyBundle, err
 
 	prekeySig, err := signer_schnorr.Sign(bob.IdentityKey, prekeyPub[:])
 	if err != nil {
-		return alice.ReceivedBobPrekeyBundle{}, fmt.Errorf("failed to sign prekey: %w", err)
+		return alice.BobPublicPrekeyBundle{}, fmt.Errorf("failed to sign prekey: %w", err)
 	}
 
-	return alice.ReceivedBobPrekeyBundle{
+	return alice.BobPublicPrekeyBundle{
 		IdentityKey:   *identityKeyPub,
 		Prekey:        *prekeyPub,
 		PrekeySig:     prekeySig,

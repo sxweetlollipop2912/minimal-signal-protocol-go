@@ -14,7 +14,6 @@ func Sign(privKey key_ed25519.PrivateKey, msg []byte) ([]byte, error) {
 	return schnorr.Sign(key_ed25519.Suite, privScalar, msg)
 }
 
-// TODO: Check if this is the correct implementation
 func Verify(pubKey key_ed25519.PublicKey, msg, sig []byte) error {
 	pubPoint, err := pubKey.ToPoint()
 	if err != nil {

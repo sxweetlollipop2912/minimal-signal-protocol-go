@@ -101,7 +101,7 @@ type BobPrivKeys struct {
 }
 
 // generateBobKeys generates the required keys for Bob and returns both the public keys (for the bundle) and the private keys.
-func generateBobKeys(withOneTimePrekey bool) (*ReceivedBobPrekeyBundle, *BobPrivKeys, error) {
+func generateBobKeys(withOneTimePrekey bool) (*BobPublicPrekeyBundle, *BobPrivKeys, error) {
 	identityKey, err := key_ed25519.New()
 	if err != nil {
 		return nil, nil, err
@@ -134,7 +134,7 @@ func generateBobKeys(withOneTimePrekey bool) (*ReceivedBobPrekeyBundle, *BobPriv
 		PrekeyPrivateKey:   *prekey,
 	}
 
-	bobBundle := &ReceivedBobPrekeyBundle{
+	bobBundle := &BobPublicPrekeyBundle{
 		IdentityKey: *identityPubKey,
 		Prekey:      *prekeyPubKey,
 		PrekeySig:   prekeySig,

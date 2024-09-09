@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -162,25 +163,34 @@ func (s *Server) retrieveQueuedMessages(userID string, ws *websocket.Conn) {
 	s.redisClient.Del(s.ctx, fmt.Sprintf("messages:%s", userID))
 }
 
-func (s *Server) HandlePublishKeys(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandlePostKeys(w http.ResponseWriter, r *http.Request) {
 	// Extract userId from the URL query
-	userID := r.URL.Query().Get("userId")
-	if userID == "" {
-		s.logger.Error("No userId provided in the query")
+	vars := mux.Vars(r)
+	userID, ok := vars["userID"]
+	if !ok {
+		s.logger.Error("No userID provided in the query")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	// Extract the public key from the request body
-	var userPublicKeyBundle alice.ReceivedBobPrekeyBundle
-	if err := json.NewDecoder(r.Body).Decode(&userPublicKeyBundle); err != nil {
-		s.logger.Errorf("Error decoding keys for user %s: %v %s", userID, err, r.Body)
+	var userPublicPrekeyBundle alice.BobPublicPrekeyBundle
+	if err := json.NewDecoder(r.Body).Decode(&userPublicPrekeyBundle); err != nil {
+		s.logger.Errorf("Error decoding keys for user %s: %v", userID, err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
+	// Serialize the struct to JSON before storing in Redis
+	data, err := json.Marshal(userPublicPrekeyBundle)
+	if err != nil {
+		s.logger.Errorf("Error serializing keys for user %s: %v", userID, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	// Publish the public key to Redis
-	if err := s.redisClient.Set(s.ctx, fmt.Sprintf("publicKey:%s", userID), userPublicKeyBundle, 0).Err(); err != nil {
+	if err := s.redisClient.Set(s.ctx, fmt.Sprintf("publicKey:%s", userID), data, 0).Err(); err != nil {
 		s.logger.Errorf("Error publishing keys for user %s: %v", userID, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -188,4 +198,43 @@ func (s *Server) HandlePublishKeys(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Infof("Public key published for user %s", userID)
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) HandleGetKeys(w http.ResponseWriter, r *http.Request) {
+	// Extract userId from the URL query
+	vars := mux.Vars(r)
+	userID, ok := vars["userID"]
+	if !ok {
+		s.logger.Error("No userID provided in the query")
+		http.Error(w, "No userID provided", http.StatusBadRequest)
+		return
+	}
+
+	// Get the public key from Redis as a string (JSON)
+	data, err := s.redisClient.Get(s.ctx, fmt.Sprintf("publicKey:%s", userID)).Result()
+	if err != nil {
+		s.logger.Errorf("Error retrieving keys for user %s: %v", userID, err)
+		http.Error(w, "Error retrieving keys", http.StatusInternalServerError)
+		return
+	}
+
+	// Deserialize the JSON string back into the struct
+	var userPublicPrekeyBundle alice.BobPublicPrekeyBundle
+	if err := json.Unmarshal([]byte(data), &userPublicPrekeyBundle); err != nil {
+		s.logger.Errorf("Error decoding keys for user %s: %v", userID, err)
+		http.Error(w, "Error decoding response", http.StatusInternalServerError)
+		return
+	}
+
+	s.logger.Infof("Public key retrieved for user %s %+v", userID, userPublicPrekeyBundle)
+
+	// Send the public key to the client
+	w.Header().Set("Content-Type", "application/json") // Set JSON content type
+	if err := json.NewEncoder(w).Encode(userPublicPrekeyBundle); err != nil {
+		s.logger.Errorf("Error encoding keys for user %s: %v", userID, err)
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
+
+	s.logger.Infof("Public key retrieved for user %s", userID)
 }
