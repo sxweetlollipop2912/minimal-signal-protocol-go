@@ -18,14 +18,14 @@ type AliceKeyBundle struct {
 	EphemeralKey key_ed25519.PrivateKey
 }
 
-func (bob *ReceivedBobPrekeyBundle) Verify() error {
+func (bob ReceivedBobPrekeyBundle) Verify() error {
 	return signer_schnorr.Verify(bob.IdentityKey, bob.Prekey[:], bob.PrekeySig)
 }
 
-func (bob *ReceivedBobPrekeyBundle) MarshalBinary() ([]byte, error) {
+func (bob ReceivedBobPrekeyBundle) MarshalBinary() ([]byte, error) {
 	return json.Marshal(bob)
 }
 
-func (bob *ReceivedBobPrekeyBundle) UnmarshalBinary(data []byte) error {
+func (bob ReceivedBobPrekeyBundle) UnmarshalBinary(data []byte) error {
 	return json.Unmarshal(data, bob)
 }
