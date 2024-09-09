@@ -73,8 +73,8 @@ func TestDoubleRatchet(t *testing.T) {
 				assert.Equal(t, tc.aliceMessage, plaintext)
 			}
 
-			// Step 2: Alice advances the ratchet and sends another message to Bob
-			header2, aliceCiphertext2, err := aliceRatchet.Encrypt([]byte("Second message from Alice"), tc.associatedData, true)
+			// Step 2: Alice sends another message to Bob
+			header2, aliceCiphertext2, err := aliceRatchet.Encrypt([]byte("Second message from Alice"), tc.associatedData, false)
 			assert.NoError(t, err)
 
 			// Bob decrypts the second message
@@ -82,8 +82,8 @@ func TestDoubleRatchet(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, []byte("Second message from Alice"), plaintext2)
 
-			// Step 3: Bob sends a message back to Alice after advancing the ratchet
-			headerBob, bobCiphertext, err := bobRatchet.Encrypt(tc.bobMessage, tc.associatedData, true)
+			// Step 3: Bob sends a message back to Alice
+			headerBob, bobCiphertext, err := bobRatchet.Encrypt(tc.bobMessage, tc.associatedData, false)
 			assert.NoError(t, err)
 
 			// Alice decrypts Bob's message

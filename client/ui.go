@@ -66,16 +66,7 @@ func (app *ChatApp) SendMessageHandler(g *gocui.Gui, v *gocui.View) error {
 		return nil
 	}
 
-	// Encrypt message
-	// TODO: Forward dh ratchet regularly
-	ad := app.getADBytes()
-	header, encryptedMessage, err := app.ratchet.Encrypt([]byte(message), ad[:], false)
-	if err != nil {
-		logger.Errorf("Error encrypting message: %v", err)
-		return err
-	}
-
-	if err := app.sendMessage(encryptedMessage, *header); err != nil {
+	if err := app.sendMessage(message); err != nil {
 		logger.Errorf("Error sending message: %v", err)
 	}
 

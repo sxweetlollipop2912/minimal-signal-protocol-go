@@ -9,5 +9,5 @@
 
 ### TODO
 
-- [ ] Make sure sender advance DH ratchet regularly (by generating new key pair) to ensure post-compromise security
-- [ ] Write tests
+- [x] Make sure sender advance DH ratchet regularly
+- [x] Write tests

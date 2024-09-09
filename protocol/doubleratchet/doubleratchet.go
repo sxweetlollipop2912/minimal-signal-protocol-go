@@ -6,7 +6,7 @@ import (
 
 const (
 	// maxSkip is the constant specifying the maximum number of message keys that can be skipped in a single chain
-	maxSkip = 1000 // TODO: this is a random value
+	maxSkip = 1000
 )
 
 var (
@@ -104,7 +104,7 @@ func (dr *doubleRatchetImpl) Encrypt(plaintext []byte, associatedData []byte, fo
 	)
 
 	// 0. If forwardDHRatchet is true, perform a DH ratchet step
-	if forwardDHRatchet {
+	if forwardDHRatchet || dr.currentState.cks == nil {
 		if err := dhRatchetSendChain(dr.currentState); err != nil {
 			return nil, nil, err
 		}

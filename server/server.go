@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"minimal-signal/common"
 	"minimal-signal/protocol/x3dh/alice"
 	"net/http"
 	"sync"
@@ -13,13 +14,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
-
-// Message struct for incoming/outgoing messages
-type Message struct {
-	From    string `json:"from" validate:"required"`
-	To      string `json:"to" validate:"required"`
-	Message string `json:"message" validate:"required"`
-}
 
 type Server struct {
 	ctx       context.Context
@@ -83,7 +77,7 @@ func (s *Server) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		var msgObj Message
+		var msgObj common.MessageBundle
 		if err := json.Unmarshal(message, &msgObj); err != nil {
 			s.logger.Errorf("Invalid message format from user %s: %v", userID, err)
 			continue
@@ -115,7 +109,7 @@ func (s *Server) Close() {
 }
 
 // Handle sending messages and queuing for offline users
-func (s *Server) handleMessage(msg *Message) {
+func (s *Server) handleMessage(msg *common.MessageBundle) {
 	s.mutex.Lock()
 	recipientConn, online := s.connectedUsers[msg.To]
 	s.mutex.Unlock()
@@ -133,7 +127,7 @@ func (s *Server) handleMessage(msg *Message) {
 }
 
 // Queue a message in Redis
-func (s *Server) queueMessage(userID string, msg *Message) {
+func (s *Server) queueMessage(userID string, msg *common.MessageBundle) {
 	messageJSON, err := json.Marshal(msg)
 	if err != nil {
 		s.logger.Errorf("Error marshalling message for user %s: %v", userID, err)

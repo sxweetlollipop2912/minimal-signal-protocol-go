@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"minimal-signal/common"
 	"minimal-signal/configs"
-	"minimal-signal/crypto/key_ed25519"
 	"minimal-signal/protocol/doubleratchet"
 	"minimal-signal/protocol/x3dh/alice"
 	"minimal-signal/protocol/x3dh/bob"
@@ -30,9 +30,9 @@ type ChatApp struct {
 
 	// crypto stuff
 	userPrivKeyBundle bob.BobPrekeyBundle
-	otherIDKey        key_ed25519.PublicKey
+	otherIDKeyBundle  alice.BobPublicPrekeyBundle
 	ratchet           doubleratchet.DoubleRatchet
-	initHandshake     X3DHHandshakeBundle
+	initHandshake     *common.X3DHHandshakeBundle
 }
 
 // NewChatApp initializes a new ChatApp
@@ -50,10 +50,12 @@ func (app *ChatApp) connectToWebSocket() error {
 	}
 	app.wsConn = conn
 
-	// handshake
-	if err := app.signalHandshake(); err != nil {
-		return fmt.Errorf("failed to perform handshake: %w", err)
+	// Get other's keys from server
+	theirKeys, err := app.GetKeys(app.recipientID)
+	if err != nil {
+		logger.Fatalf("Error getting recipient keys: %v", err)
 	}
+	app.otherIDKeyBundle = *theirKeys
 
 	app.wg.Add(1)
 	go func() {
@@ -61,36 +63,6 @@ func (app *ChatApp) connectToWebSocket() error {
 		app.listenForMessages()
 	}()
 
-	return nil
-}
-
-// signalHandshake performs the key agreement protocol and init ratchet.
-// Must already have recipientID set.
-// Postcondition: ratchets are established
-func (app *ChatApp) signalHandshake() error {
-	// Get other's keys from server
-	theirKeys, err := app.GetKeys(app.recipientID)
-	if err != nil {
-		logger.Fatalf("Error getting recipient keys: %v", err)
-	}
-	app.otherIDKey = theirKeys.IdentityKey
-
-	// X3DH
-	sharedKey, pubEphKey, err := alice.PerformKeyAgreement(theirKeys, app.userPrivKeyBundle.IdentityKey)
-	if err != nil {
-		return fmt.Errorf("failed to perform key agreement: %w", err)
-	}
-	var ratchetKey [32]byte
-	copy(ratchetKey[:], sharedKey)
-	app.ratchet, err = doubleratchet.InitAlice(ratchetKey, theirKeys.Prekey)
-	if err != nil {
-		return fmt.Errorf("failed to init ratchet: %w", err)
-	}
-
-	app.initHandshake = X3DHHandshakeBundle{
-		EphPubKey:     *pubEphKey,
-		OneTimePubKey: theirKeys.OneTimePrekey,
-	}
 	return nil
 }
 
@@ -103,14 +75,20 @@ func (app *ChatApp) listenForMessages() {
 			return
 		}
 
-		var msg MessageBundle
+		var msg common.MessageBundle
 		if err := json.Unmarshal(msgBytes, &msg); err != nil {
 			logger.Errorf("Error unmarshalling message: %v", err)
 			continue
 		}
 
+		plaintext, err := app.decryptMessage(&msg)
+		if err != nil {
+			logger.Errorf("Error decrypting message: %v", err)
+			continue
+		}
+
 		app.messageLock.Lock()
-		app.messages = append(app.messages, fmt.Sprintf("[%s] %s", msg.From, msg.Message))
+		app.messages = append(app.messages, fmt.Sprintf("[%s] %s", msg.From, plaintext))
 		app.messageLock.Unlock()
 
 		app.Gui.Update(func(g *gocui.Gui) error {
@@ -120,18 +98,15 @@ func (app *ChatApp) listenForMessages() {
 }
 
 // sendMessage sends a message to the WebSocket server in JSON format
-func (app *ChatApp) sendMessage(message []byte, header doubleratchet.Header) error {
+func (app *ChatApp) sendMessage(message string) error {
 	if app.wsConn == nil {
 		return fmt.Errorf("WebSocket connection not established")
 	}
 
-	msg := MessageBundle{
-		From:      app.userID,
-		To:        app.recipientID,
-		Message:   message,
-		Header:    header,
-		AD:        app.getADBytes(),
-		Handshake: app.initHandshake,
+	msg, err := app.encryptMessage(message)
+	if err != nil {
+		logger.Errorf("Error encrypting message: %v", err)
+		return fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
 	msgJSON, err := json.Marshal(msg)
@@ -204,9 +179,13 @@ func (app *ChatApp) GetKeys(recipientID string) (*alice.BobPublicPrekeyBundle, e
 	return &publicPrekeyBundle, nil
 }
 
-func (app *ChatApp) getADBytes() [64]byte {
+func (app *ChatApp) getADBytes() ([64]byte, error) {
 	var adBytes [64]byte
-	copy(adBytes[:32], app.userPrivKeyBundle.IdentityKey[:])
-	copy(adBytes[32:], app.otherIDKey[:])
-	return adBytes
+	userIDPub, err := app.userPrivKeyBundle.IdentityKey.Public()
+	if err != nil {
+		return adBytes, fmt.Errorf("failed to get public key: %v", err)
+	}
+	copy(adBytes[:32], userIDPub[:])
+	copy(adBytes[32:], app.otherIDKeyBundle.IdentityKey[:])
+	return adBytes, nil
 }

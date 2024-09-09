@@ -1,4 +1,4 @@
-package client
+package common
 
 import (
 	"minimal-signal/crypto/key_ed25519"
@@ -12,7 +12,7 @@ type MessageBundle struct {
 	Message   []byte               `json:"message" validate:"required"`
 	Header    doubleratchet.Header `json:"header" validate:"required"`
 	AD        [64]byte             `json:"ad" validate:"required"`
-	Handshake X3DHHandshakeBundle  `json:"handshake" validate:"required"`
+	Handshake *X3DHHandshakeBundle `json:"handshake,omitempty"`
 }
 
 // X3DHHandshakeBundle is sent in Alice's first message

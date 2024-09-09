@@ -23,7 +23,6 @@ func main() {
 	}
 	userID := os.Args[1]
 
-	// TODO: Debug
 	if userID == "alice" {
 		godotenv.Load(".env.alice")
 	} else if userID == "bob" {
