@@ -217,14 +217,16 @@ func (app *ChatApp) save() error {
 	// Initialize Redis client
 	rdb := redis.NewClient(&redis.Options{Addr: configs.RedisAddress})
 
-	// Save ratchet
-	var ratchetBuffer bytes.Buffer
-	ratchetEncoder := gob.NewEncoder(&ratchetBuffer)
-	if err := ratchetEncoder.Encode(app.ratchet); err != nil {
-		return err
-	}
-	if err := rdb.Set(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID), ratchetBuffer.Bytes(), 0).Err(); err != nil {
-		return err
+	if app.ratchet != nil {
+		// Save ratchet
+		var ratchetBuffer bytes.Buffer
+		ratchetEncoder := gob.NewEncoder(&ratchetBuffer)
+		if err := ratchetEncoder.Encode(app.ratchet); err != nil {
+			return err
+		}
+		if err := rdb.Set(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID), ratchetBuffer.Bytes(), 0).Err(); err != nil {
+			return err
+		}
 	}
 
 	// Save messages
@@ -237,14 +239,16 @@ func (app *ChatApp) save() error {
 		return err
 	}
 
-	// Save initHandshake
-	var initHandshakeBuffer bytes.Buffer
-	initHandshakeEncoder := gob.NewEncoder(&initHandshakeBuffer)
-	if err := initHandshakeEncoder.Encode(app.initHandshake); err != nil {
-		return err
-	}
-	if err := rdb.Set(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID), initHandshakeBuffer.Bytes(), 0).Err(); err != nil {
-		return err
+	if app.initHandshake != nil {
+		// Save initHandshake
+		var initHandshakeBuffer bytes.Buffer
+		initHandshakeEncoder := gob.NewEncoder(&initHandshakeBuffer)
+		if err := initHandshakeEncoder.Encode(app.initHandshake); err != nil {
+			return err
+		}
+		if err := rdb.Set(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID), initHandshakeBuffer.Bytes(), 0).Err(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -256,35 +260,39 @@ func (app *ChatApp) load() error {
 
 	// Load ratchet
 	ratchetData, err := rdb.Get(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID)).Bytes()
-	if err != nil {
-		return err
-	}
-	ratchetBuffer := bytes.NewBuffer(ratchetData)
-	ratchetDecoder := gob.NewDecoder(ratchetBuffer)
-	app.ratchet = &doubleratchet.DoubleRatchet{}
-	if err := ratchetDecoder.Decode(app.ratchet); err != nil {
+	if err == nil {
+		ratchetBuffer := bytes.NewBuffer(ratchetData)
+		ratchetDecoder := gob.NewDecoder(ratchetBuffer)
+		app.ratchet = &doubleratchet.DoubleRatchet{}
+		if err := ratchetDecoder.Decode(app.ratchet); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, redis.Nil) {
 		return err
 	}
 
 	// Load messages
 	messagesData, err := rdb.Get(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID)).Bytes()
-	if err != nil {
-		return err
-	}
-	messagesBuffer := bytes.NewBuffer(messagesData)
-	messagesDecoder := gob.NewDecoder(messagesBuffer)
-	if err := messagesDecoder.Decode(&app.messages); err != nil {
+	if err == nil {
+		messagesBuffer := bytes.NewBuffer(messagesData)
+		messagesDecoder := gob.NewDecoder(messagesBuffer)
+		if err := messagesDecoder.Decode(&app.messages); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, redis.Nil) {
 		return err
 	}
 
 	// Load initHandshake
 	initHandshakeData, err := rdb.Get(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID)).Bytes()
-	if err != nil {
-		return err
-	}
-	initHandshakeBuffer := bytes.NewBuffer(initHandshakeData)
-	initHandshakeDecoder := gob.NewDecoder(initHandshakeBuffer)
-	if err := initHandshakeDecoder.Decode(&app.initHandshake); err != nil {
+	if err == nil {
+		initHandshakeBuffer := bytes.NewBuffer(initHandshakeData)
+		initHandshakeDecoder := gob.NewDecoder(initHandshakeBuffer)
+		app.initHandshake = &common.X3DHHandshakeBundle{}
+		if err := initHandshakeDecoder.Decode(app.initHandshake); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, redis.Nil) {
 		return err
 	}
 
