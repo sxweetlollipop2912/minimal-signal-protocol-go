@@ -2,8 +2,11 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"minimal-signal/common"
 	"minimal-signal/configs"
 	"minimal-signal/protocol/doubleratchet"
@@ -17,7 +20,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var logger = logrus.New()
+var (
+	// Redis keys
+	ratchetKey       = "client:ratchet:%s:%s"
+	messagesKey      = "client:messages:%s:%s"
+	initHandshakeKey = "client:initHandshake:%s:%s"
+
+	logger = logrus.New()
+)
 
 type ChatApp struct {
 	Gui         *gocui.Gui
@@ -56,6 +66,12 @@ func (app *ChatApp) connectToWebSocket() error {
 		logger.Fatalf("Error getting recipient keys: %v", err)
 	}
 	app.otherIDKeyBundle = *theirKeys
+
+	if err = app.load(); err != nil {
+		if !errors.Is(err, redis.Nil) {
+			return fmt.Errorf("failed to load data: %w", err)
+		}
+	}
 
 	app.wg.Add(1)
 	go func() {
@@ -128,6 +144,11 @@ func (app *ChatApp) quit(_ *gocui.Gui, _ *gocui.View) error {
 		app.wsConn.Close()
 	}
 	app.wg.Wait()
+
+	if err := app.save(); err != nil {
+		logger.Errorf("Error saving data: %v", err)
+	}
+
 	return gocui.ErrQuit
 }
 
@@ -188,4 +209,72 @@ func (app *ChatApp) getADBytes() ([64]byte, error) {
 	copy(adBytes[:32], userIDPub[:])
 	copy(adBytes[32:], app.otherIDKeyBundle.IdentityKey[:])
 	return adBytes, nil
+}
+
+func (app *ChatApp) save() error {
+	// Initialize Redis client
+	rdb := redis.NewClient(&redis.Options{Addr: configs.RedisAddress})
+
+	// Save ratchet
+	ratchetBytes, err := json.Marshal(app.ratchet)
+	if err != nil {
+		return err
+	}
+	if err = rdb.Set(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID), ratchetBytes, 0).Err(); err != nil {
+		return err
+	}
+
+	// Save messages
+	messagesData, err := json.Marshal(app.messages)
+	if err != nil {
+		return err
+	}
+	if err = rdb.Set(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID), messagesData, 0).Err(); err != nil {
+		return err
+	}
+
+	// Save initHandshake
+	initHandshakeBytes, err := json.Marshal(app.initHandshake)
+	if err != nil {
+		return err
+	}
+	if err = rdb.Set(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID), initHandshakeBytes, 0).Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (app *ChatApp) load() error {
+	// Initialize Redis client
+	rdb := redis.NewClient(&redis.Options{Addr: configs.RedisAddress})
+
+	// Load ratchet
+	ratchet, err := rdb.Get(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID)).Bytes()
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(ratchet, &app.ratchet); err != nil {
+		return err
+	}
+
+	// Load messages
+	messages, err := rdb.Get(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID)).Bytes()
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(messages, &app.messages); err != nil {
+		return err
+	}
+
+	// Load initHandshake
+	initHandshake, err := rdb.Get(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID)).Bytes()
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(initHandshake, &app.initHandshake); err != nil {
+		return err
+	}
+
+	return nil
 }

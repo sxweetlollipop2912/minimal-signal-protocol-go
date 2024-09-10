@@ -45,7 +45,7 @@ type doubleRatchetImpl struct {
 	currentState *state
 }
 
-func NewDoubleRatchet(initState *state) DoubleRatchet {
+func newDoubleRatchet(initState *state) DoubleRatchet {
 	if initState.mkSkipped == nil {
 		initState.mkSkipped = make(map[mkSkippedKey]*MsgKey)
 	}
@@ -77,7 +77,7 @@ func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (DoubleRatchet,
 		return nil, err
 	}
 
-	return NewDoubleRatchet(&state{
+	return newDoubleRatchet(&state{
 		dhs:       *dhs,
 		dhr:       &dhr,
 		rk:        *rk,
@@ -89,7 +89,7 @@ func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (DoubleRatchet,
 
 // InitBob initializes the Double Ratchet for the receiver
 func InitBob(sk RatchetKey, bobDHKeyPair key_ed25519.Pair) DoubleRatchet {
-	return NewDoubleRatchet(&state{
+	return newDoubleRatchet(&state{
 		dhs:       bobDHKeyPair,
 		rk:        sk,
 		mkSkipped: make(map[mkSkippedKey]*MsgKey),
