@@ -3,10 +3,10 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/redis/go-redis/v9"
 	"minimal-signal/common"
 	"minimal-signal/configs"
 	"minimal-signal/protocol/doubleratchet"
@@ -14,6 +14,8 @@ import (
 	"minimal-signal/protocol/x3dh/bob"
 	"net/http"
 	"sync"
+
+	"github.com/redis/go-redis/v9"
 
 	"github.com/gorilla/websocket"
 	"github.com/jroimartin/gocui"
@@ -216,29 +218,32 @@ func (app *ChatApp) save() error {
 	rdb := redis.NewClient(&redis.Options{Addr: configs.RedisAddress})
 
 	// Save ratchet
-	ratchetBytes, err := json.Marshal(app.ratchet)
-	if err != nil {
+	var ratchetBuffer bytes.Buffer
+	ratchetEncoder := gob.NewEncoder(&ratchetBuffer)
+	if err := ratchetEncoder.Encode(app.ratchet); err != nil {
 		return err
 	}
-	if err = rdb.Set(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID), ratchetBytes, 0).Err(); err != nil {
+	if err := rdb.Set(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID), ratchetBuffer.Bytes(), 0).Err(); err != nil {
 		return err
 	}
 
 	// Save messages
-	messagesData, err := json.Marshal(app.messages)
-	if err != nil {
+	var messagesBuffer bytes.Buffer
+	messagesEncoder := gob.NewEncoder(&messagesBuffer)
+	if err := messagesEncoder.Encode(app.messages); err != nil {
 		return err
 	}
-	if err = rdb.Set(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID), messagesData, 0).Err(); err != nil {
+	if err := rdb.Set(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID), messagesBuffer.Bytes(), 0).Err(); err != nil {
 		return err
 	}
 
 	// Save initHandshake
-	initHandshakeBytes, err := json.Marshal(app.initHandshake)
-	if err != nil {
+	var initHandshakeBuffer bytes.Buffer
+	initHandshakeEncoder := gob.NewEncoder(&initHandshakeBuffer)
+	if err := initHandshakeEncoder.Encode(app.initHandshake); err != nil {
 		return err
 	}
-	if err = rdb.Set(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID), initHandshakeBytes, 0).Err(); err != nil {
+	if err := rdb.Set(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID), initHandshakeBuffer.Bytes(), 0).Err(); err != nil {
 		return err
 	}
 
@@ -250,30 +255,36 @@ func (app *ChatApp) load() error {
 	rdb := redis.NewClient(&redis.Options{Addr: configs.RedisAddress})
 
 	// Load ratchet
-	ratchet, err := rdb.Get(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID)).Bytes()
+	ratchetData, err := rdb.Get(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID)).Bytes()
 	if err != nil {
 		return err
 	}
+	ratchetBuffer := bytes.NewBuffer(ratchetData)
+	ratchetDecoder := gob.NewDecoder(ratchetBuffer)
 	app.ratchet = &doubleratchet.DoubleRatchet{}
-	if err = json.Unmarshal(ratchet, &app.ratchet); err != nil {
+	if err := ratchetDecoder.Decode(app.ratchet); err != nil {
 		return err
 	}
 
 	// Load messages
-	messages, err := rdb.Get(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID)).Bytes()
+	messagesData, err := rdb.Get(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID)).Bytes()
 	if err != nil {
 		return err
 	}
-	if err = json.Unmarshal(messages, &app.messages); err != nil {
+	messagesBuffer := bytes.NewBuffer(messagesData)
+	messagesDecoder := gob.NewDecoder(messagesBuffer)
+	if err := messagesDecoder.Decode(&app.messages); err != nil {
 		return err
 	}
 
 	// Load initHandshake
-	initHandshake, err := rdb.Get(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID)).Bytes()
+	initHandshakeData, err := rdb.Get(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID)).Bytes()
 	if err != nil {
 		return err
 	}
-	if err = json.Unmarshal(initHandshake, &app.initHandshake); err != nil {
+	initHandshakeBuffer := bytes.NewBuffer(initHandshakeData)
+	initHandshakeDecoder := gob.NewDecoder(initHandshakeBuffer)
+	if err := initHandshakeDecoder.Decode(&app.initHandshake); err != nil {
 		return err
 	}
 
