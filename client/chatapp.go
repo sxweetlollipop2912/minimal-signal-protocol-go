@@ -22,14 +22,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var (
-	// Redis keys
-	ratchetKey       = "client:ratchet:%s:%s"
-	messagesKey      = "client:messages:%s:%s"
-	initHandshakeKey = "client:initHandshake:%s:%s"
-
-	logger = logrus.New()
-)
+var logger = logrus.New()
 
 type ChatApp struct {
 	Gui         *gocui.Gui
@@ -224,7 +217,7 @@ func (app *ChatApp) save() error {
 		if err := ratchetEncoder.Encode(app.ratchet); err != nil {
 			return err
 		}
-		if err := rdb.Set(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID), ratchetBuffer.Bytes(), 0).Err(); err != nil {
+		if err := rdb.Set(context.Background(), fmt.Sprintf(configs.ClientRatchetKey, app.userID, app.recipientID), ratchetBuffer.Bytes(), 0).Err(); err != nil {
 			return err
 		}
 	}
@@ -235,7 +228,7 @@ func (app *ChatApp) save() error {
 	if err := messagesEncoder.Encode(app.messages); err != nil {
 		return err
 	}
-	if err := rdb.Set(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID), messagesBuffer.Bytes(), 0).Err(); err != nil {
+	if err := rdb.Set(context.Background(), fmt.Sprintf(configs.ClientMessagesKey, app.userID, app.recipientID), messagesBuffer.Bytes(), 0).Err(); err != nil {
 		return err
 	}
 
@@ -246,7 +239,7 @@ func (app *ChatApp) save() error {
 		if err := initHandshakeEncoder.Encode(app.initHandshake); err != nil {
 			return err
 		}
-		if err := rdb.Set(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID), initHandshakeBuffer.Bytes(), 0).Err(); err != nil {
+		if err := rdb.Set(context.Background(), fmt.Sprintf(configs.ClientInitHandshakeKey, app.userID, app.recipientID), initHandshakeBuffer.Bytes(), 0).Err(); err != nil {
 			return err
 		}
 	}
@@ -259,7 +252,7 @@ func (app *ChatApp) load() error {
 	rdb := redis.NewClient(&redis.Options{Addr: configs.RedisAddress})
 
 	// Load ratchet
-	ratchetData, err := rdb.Get(context.Background(), fmt.Sprintf(ratchetKey, app.userID, app.recipientID)).Bytes()
+	ratchetData, err := rdb.Get(context.Background(), fmt.Sprintf(configs.ClientRatchetKey, app.userID, app.recipientID)).Bytes()
 	if err == nil {
 		ratchetBuffer := bytes.NewBuffer(ratchetData)
 		ratchetDecoder := gob.NewDecoder(ratchetBuffer)
@@ -272,7 +265,7 @@ func (app *ChatApp) load() error {
 	}
 
 	// Load messages
-	messagesData, err := rdb.Get(context.Background(), fmt.Sprintf(messagesKey, app.userID, app.recipientID)).Bytes()
+	messagesData, err := rdb.Get(context.Background(), fmt.Sprintf(configs.ClientMessagesKey, app.userID, app.recipientID)).Bytes()
 	if err == nil {
 		messagesBuffer := bytes.NewBuffer(messagesData)
 		messagesDecoder := gob.NewDecoder(messagesBuffer)
@@ -284,7 +277,7 @@ func (app *ChatApp) load() error {
 	}
 
 	// Load initHandshake
-	initHandshakeData, err := rdb.Get(context.Background(), fmt.Sprintf(initHandshakeKey, app.userID, app.recipientID)).Bytes()
+	initHandshakeData, err := rdb.Get(context.Background(), fmt.Sprintf(configs.ClientInitHandshakeKey, app.userID, app.recipientID)).Bytes()
 	if err == nil {
 		initHandshakeBuffer := bytes.NewBuffer(initHandshakeData)
 		initHandshakeDecoder := gob.NewDecoder(initHandshakeBuffer)

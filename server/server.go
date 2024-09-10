@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"minimal-signal/common"
+	"minimal-signal/configs"
 	"minimal-signal/protocol/x3dh/alice"
 	"net/http"
 	"sync"
@@ -133,14 +134,14 @@ func (s *Server) queueMessage(userID string, msg *common.MessageBundle) {
 		s.logger.Errorf("Error marshalling message for user %s: %v", userID, err)
 		return
 	}
-	if err := s.redisClient.RPush(s.ctx, fmt.Sprintf("messages:%s", userID), messageJSON).Err(); err != nil {
+	if err := s.redisClient.RPush(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, userID), messageJSON).Err(); err != nil {
 		s.logger.Errorf("Error queuing message for user %s: %v", userID, err)
 	}
 }
 
 // Retrieve queued messages for a user when they reconnect
 func (s *Server) retrieveQueuedMessages(userID string, ws *websocket.Conn) {
-	messages, err := s.redisClient.LRange(s.ctx, fmt.Sprintf("messages:%s", userID), 0, -1).Result()
+	messages, err := s.redisClient.LRange(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, userID), 0, -1).Result()
 	if err != nil {
 		s.logger.Errorf("Error retrieving queued messages for user %s: %v", userID, err)
 		return
@@ -154,7 +155,7 @@ func (s *Server) retrieveQueuedMessages(userID string, ws *websocket.Conn) {
 	}
 
 	// Clear the queue after sending
-	s.redisClient.Del(s.ctx, fmt.Sprintf("messages:%s", userID))
+	s.redisClient.Del(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, userID))
 }
 
 func (s *Server) HandlePostKeys(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +185,7 @@ func (s *Server) HandlePostKeys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Publish the public key to Redis
-	if err := s.redisClient.Set(s.ctx, fmt.Sprintf("publicKey:%s", userID), data, 0).Err(); err != nil {
+	if err := s.redisClient.Set(s.ctx, fmt.Sprintf(configs.ServerUserPubKey, userID), data, 0).Err(); err != nil {
 		s.logger.Errorf("Error publishing keys for user %s: %v", userID, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -205,7 +206,7 @@ func (s *Server) HandleGetKeys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the public key from Redis as a string (JSON)
-	data, err := s.redisClient.Get(s.ctx, fmt.Sprintf("publicKey:%s", userID)).Result()
+	data, err := s.redisClient.Get(s.ctx, fmt.Sprintf(configs.ServerUserPubKey, userID)).Result()
 	if err != nil {
 		s.logger.Errorf("Error retrieving keys for user %s: %v", userID, err)
 		http.Error(w, "Error retrieving keys", http.StatusInternalServerError)

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"math/big"
 	"minimal-signal/common"
+	"minimal-signal/configs"
 	"minimal-signal/crypto/key_ed25519"
 	"minimal-signal/protocol/doubleratchet"
+	"minimal-signal/protocol/fingerprint"
 	"minimal-signal/protocol/x3dh/alice"
 	"minimal-signal/protocol/x3dh/bob"
 )
@@ -68,15 +70,14 @@ func (app *ChatApp) encryptMessage(msg string) (*common.MessageBundle, error) {
 	}
 
 	// Encrypt message
-	// TODO: Forward dh ratchet regularly
 	ad, err := app.getADBytes()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get AD bytes: %w", err)
 	}
 
-	// forward 1/3 of the time
+	// Forward DH ratchet with chance
 	var forwardDH bool
-	if r, err := rand.Int(rand.Reader, big.NewInt(3)); err != nil {
+	if r, err := rand.Int(rand.Reader, big.NewInt(int64(configs.ForwardDHRatchetChanceTotal))); err != nil {
 		forwardDH = true
 	} else {
 		forwardDH = r.Int64() == 0
@@ -108,4 +109,38 @@ func (app *ChatApp) decryptMessage(msg *common.MessageBundle) ([]byte, error) {
 		return nil, fmt.Errorf("error decrypting message: %vw", err)
 	}
 	return plaintext, nil
+}
+
+func (app *ChatApp) fingerprint() (string, error) {
+	userIDPub, err := app.userPrivKeyBundle.IdentityKey.Public()
+	if err != nil {
+		return "", fmt.Errorf("failed to get public key: %w", err)
+	}
+	fingerprint1, err := fingerprint.Fingerprint(*userIDPub, []byte(app.userID))
+	if err != nil {
+		return "", fmt.Errorf("failed to get fingerprint: %w", err)
+	}
+	fingerprint2, err := fingerprint.Fingerprint(app.otherIDKeyBundle.IdentityKey, []byte(app.recipientID))
+	if err != nil {
+		return "", fmt.Errorf("failed to get fingerprint: %w", err)
+	}
+	if app.userID > app.recipientID {
+		// swap
+		fingerprint1, fingerprint2 = fingerprint2, fingerprint1
+	}
+
+	// Concatenate the two fingerprints
+	var combined [60]int
+	copy(combined[:30], fingerprint1[:])
+	copy(combined[30:], fingerprint2[:])
+
+	// Convert to string with spaces every 5 digits
+	var result string
+	for i, num := range combined {
+		result += fmt.Sprintf("%d", num)
+		if (i+1)%5 == 0 && i != len(combined)-1 {
+			result += " "
+		}
+	}
+	return result, nil
 }

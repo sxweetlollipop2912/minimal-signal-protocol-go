@@ -94,7 +94,20 @@ func (app *ChatApp) layout(g *gocui.Gui) error {
 		return nil
 	}
 
-	if v, err := g.SetView("messages", 0, 0, maxX-1, maxY-5); err != nil {
+	if v, err := g.SetView("fingerprint", 0, 0, maxX-1, 2); err != nil {
+		if !errors.Is(err, gocui.ErrUnknownView) {
+			return err
+		}
+		fingerprint, err := app.fingerprint()
+		if err != nil {
+			return err
+		}
+		v.Title = "Fingerprint - Compare this with your friend's to make sure he's your friend"
+		v.Wrap = true
+		fmt.Fprintln(v, fingerprint)
+	}
+
+	if v, err := g.SetView("messages", 0, 3, maxX-1, maxY-5); err != nil {
 		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
