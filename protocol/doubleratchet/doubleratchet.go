@@ -13,49 +13,23 @@ var (
 	utils = newDoubleRatchetUtils()
 )
 
-type DoubleRatchet interface {
-	// Encrypt is the exported function that performs a symmetric-key ratchet step, then encrypts the message with the
-	// resulting message key. In addition to the message’s plaintext it takes an AD byte sequence which is prepended
-	// to the header to form the associated data for the underlying AEAD encryption.
-	//
-	// If forwardDHRatchet is true, this function performs a DH ratchet step before the symmetric-key ratchet step.
-	// Don't set to true on first message.
-	// Should set to true in regular intervals.
-	Encrypt(plaintext []byte, associatedData []byte, forwardDHRatchet bool) (header *Header, ciphertext []byte, err error)
-
-	// Decrypt is the exported function that decrypts messages. It does the following:
-	// • If the message corresponds to a skipped message key this function decrypts the message,
-	// deletes the message key, and returns.
-	// • Otherwise, if a new ratchet key has been received this function stores any skipped message keys from the
-	// receiving chain and performs a DH ratchet step to replace the sending and receiving chains.
-	// • This function then stores any skipped message keys from the current receiving chain, performs a symmetric-key
-	// ratchet step to derive the relevant message key and next chain key, and decrypts the message.
-	// If an exception is raised (e.g. message authentication failure) then the message is discarded and changes to
-	// the state object are discarded. Otherwise, accept the decrypted plaintext and store changes to the state object.
-	Decrypt(header Header, ciphertext []byte, associatedData []byte) (plaintext []byte, err error)
-
-	// MaxSkip returns the constant specifying the maximum number of message keys that can be skipped in a single chain
-	MaxSkip() MsgIndex
-}
-
-// doubleRatchetImpl implements the DoubleRatchet interface.
 // https://signal.org/docs/specifications/doubleratchet/#encrypting-messages and
 // https://signal.org/docs/specifications/doubleratchet/#decrypting-messages
-type doubleRatchetImpl struct {
+type DoubleRatchet struct {
 	currentState *state
 }
 
-func newDoubleRatchet(initState *state) DoubleRatchet {
+func newDoubleRatchet(initState *state) *DoubleRatchet {
 	if initState.mkSkipped == nil {
 		initState.mkSkipped = make(map[mkSkippedKey]*MsgKey)
 	}
-	return &doubleRatchetImpl{
+	return &DoubleRatchet{
 		currentState: initState,
 	}
 }
 
 // InitAlice initializes the Double Ratchet for the sender
-func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (DoubleRatchet, error) {
+func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (*DoubleRatchet, error) {
 	utils := newDoubleRatchetUtils()
 
 	// Init dhs
@@ -88,7 +62,7 @@ func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (DoubleRatchet,
 }
 
 // InitBob initializes the Double Ratchet for the receiver
-func InitBob(sk RatchetKey, bobDHKeyPair key_ed25519.Pair) DoubleRatchet {
+func InitBob(sk RatchetKey, bobDHKeyPair key_ed25519.Pair) *DoubleRatchet {
 	return newDoubleRatchet(&state{
 		dhs:       bobDHKeyPair,
 		rk:        sk,
@@ -97,7 +71,13 @@ func InitBob(sk RatchetKey, bobDHKeyPair key_ed25519.Pair) DoubleRatchet {
 	})
 }
 
-func (dr *doubleRatchetImpl) Encrypt(plaintext []byte, associatedData []byte, forwardDHRatchet bool) (*Header, []byte, error) {
+// Encrypt is the exported function that performs a symmetric-key ratchet step, then encrypts the message with the
+// resulting message key. In addition to the message’s plaintext it takes an AD byte sequence which is prepended
+// to the header to form the associated data for the underlying AEAD encryption.
+//
+// If forwardDHRatchet is true, this function performs a DH ratchet step before the symmetric-key ratchet step.
+// Don't set to true on first message.
+func (dr *DoubleRatchet) Encrypt(plaintext []byte, associatedData []byte, forwardDHRatchet bool) (*Header, []byte, error) {
 	var (
 		mk  *MsgKey
 		err error
@@ -139,7 +119,16 @@ func (dr *doubleRatchetImpl) Encrypt(plaintext []byte, associatedData []byte, fo
 	return &header, ciphertext, nil
 }
 
-func (dr *doubleRatchetImpl) Decrypt(header Header, ciphertext []byte, associatedData []byte) ([]byte, error) {
+// Decrypt is the exported function that decrypts messages. It does the following:
+// • If the message corresponds to a skipped message key this function decrypts the message,
+// deletes the message key, and returns.
+// • Otherwise, if a new ratchet key has been received this function stores any skipped message keys from the
+// receiving chain and performs a DH ratchet step to replace the sending and receiving chains.
+// • This function then stores any skipped message keys from the current receiving chain, performs a symmetric-key
+// ratchet step to derive the relevant message key and next chain key, and decrypts the message.
+// If an exception is raised (e.g. message authentication failure) then the message is discarded and changes to
+// the state object are discarded. Otherwise, accept the decrypted plaintext and store changes to the state object.
+func (dr *DoubleRatchet) Decrypt(header Header, ciphertext []byte, associatedData []byte) ([]byte, error) {
 	var (
 		// If no error occurs, dr.currentState will be updated with newState
 		newState = *dr.currentState
@@ -194,11 +183,12 @@ func (dr *doubleRatchetImpl) Decrypt(header Header, ciphertext []byte, associate
 	return utils.decrypt(*mk, ciphertext, adHeader)
 }
 
-func (dr *doubleRatchetImpl) MaxSkip() MsgIndex {
+// MaxSkip returns the constant specifying the maximum number of message keys that can be skipped in a single chain
+func (dr *DoubleRatchet) MaxSkip() MsgIndex {
 	return maxSkip
 }
 
-func (dr *doubleRatchetImpl) skipMessageKeys(newState *state, until MsgIndex) error {
+func (dr *DoubleRatchet) skipMessageKeys(newState *state, until MsgIndex) error {
 	if newState.nr+dr.MaxSkip() < until {
 		return ErrSkippingTooManyKeys
 	}

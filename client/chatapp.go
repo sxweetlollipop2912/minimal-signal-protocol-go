@@ -41,7 +41,7 @@ type ChatApp struct {
 	// crypto stuff
 	userPrivKeyBundle bob.BobPrekeyBundle
 	otherIDKeyBundle  alice.BobPublicPrekeyBundle
-	ratchet           doubleratchet.DoubleRatchet
+	ratchet           *doubleratchet.DoubleRatchet
 	initHandshake     *common.X3DHHandshakeBundle
 }
 
@@ -254,6 +254,7 @@ func (app *ChatApp) load() error {
 	if err != nil {
 		return err
 	}
+	app.ratchet = &doubleratchet.DoubleRatchet{}
 	if err = json.Unmarshal(ratchet, &app.ratchet); err != nil {
 		return err
 	}
