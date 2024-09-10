@@ -39,27 +39,27 @@ func (h *Header) Marshal() ([]byte, error) {
 }
 
 // State ref: https://signal.org/docs/specifications/doubleratchet/#state-variables
-type state struct {
-	// dhs is the DH Ratchet key pair (the “sending” or “self” ratchet key)
-	dhs key_ed25519.Pair
-	// dhr is the DH Ratchet public key (the “received” or “remote” key)
+type State struct {
+	// Dhs is the DH Ratchet key pair (the “sending” or “self” ratchet key)
+	Dhs key_ed25519.Pair
+	// Dhr is the DH Ratchet public key (the “received” or “remote” key)
 	// Not initialized at the beginning for Bob
-	dhr *key_ed25519.PublicKey
-	// rk is the 32-byte Root Key
-	rk RatchetKey
-	// cks and ckr are 32-byte Chain Keys for sending and receiving
-	// cks is not initialized at the beginning for Bob
-	// ckr is not initialized at the beginning for both Bob and Alice
-	cks, ckr *RatchetKey
-	// ns and nr are message numbers for sending and receiving
-	ns, nr MsgIndex
-	// pn is the number of messages in previous sending chain
-	pn MsgIndex
-	// mkSkipped is a map of skipped-over message keys, indexed by ratchet public key and message number
-	mkSkipped map[mkSkippedKey]*MsgKey
+	Dhr *key_ed25519.PublicKey
+	// Rk is the 32-byte Root Key
+	Rk RatchetKey
+	// Cks and Ckr are 32-byte Chain Keys for sending and receiving
+	// Cks is not initialized at the beginning for Bob
+	// Ckr is not initialized at the beginning for both Bob and Alice
+	Cks, Ckr *RatchetKey
+	// Ns and Nr are message numbers for sending and receiving
+	Ns, Nr MsgIndex
+	// Pn is the number of messages in previous sending chain
+	Pn MsgIndex
+	// MkSkipped is a map of skipped-over message keys, indexed by ratchet public key and message number
+	MkSkipped map[MkSkippedKey]*MsgKey
 }
 
-type mkSkippedKey struct {
+type MkSkippedKey struct {
 	RatchetPub key_ed25519.PublicKey
 	N          MsgIndex
 }

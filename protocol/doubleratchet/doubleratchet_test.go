@@ -145,32 +145,32 @@ func TestDHRatchetSendAndReceiveChain(t *testing.T) {
 	bobPubKey, err := bobDHKeyPair.Public()
 	assert.NoError(t, err)
 
-	// Step 3: Generate a random root key (rk) for both Alice and Bob
+	// Step 3: Generate a random root key (Rk) for both Alice and Bob
 	var randomRootKey RatchetKey
 	for i := range randomRootKey {
 		randomRootKey[i] = byte(i) // Simple key for consistency in testing
 	}
 
-	// Step 4: Set up Alice's initial state
-	// Alice's state includes Bob's public key in dhr, allowing her to perform DH calculations with Bob
-	aliceState := &state{
-		dhs:       key_ed25519.Pair{Priv: *aliceDHKeyPair, Pub: *alicePubKey}, // Alice's own key pair
-		dhr:       bobPubKey,                                                  // Bob's public key for Alice's DH calculations
-		rk:        randomRootKey,                                              // Shared root key
-		cks:       nil,                                                        // Not initialized until the ratchet is advanced
-		mkSkipped: make(map[mkSkippedKey]*MsgKey),
-		ns:        0, // Alice starts with 0 sent messages
+	// Step 4: Set up Alice's initial State
+	// Alice's State includes Bob's public key in Dhr, allowing her to perform DH calculations with Bob
+	aliceState := &State{
+		Dhs:       key_ed25519.Pair{Priv: *aliceDHKeyPair, Pub: *alicePubKey}, // Alice's own key pair
+		Dhr:       bobPubKey,                                                  // Bob's public key for Alice's DH calculations
+		Rk:        randomRootKey,                                              // Shared root key
+		Cks:       nil,                                                        // Not initialized until the ratchet is advanced
+		MkSkipped: make(map[MkSkippedKey]*MsgKey),
+		Ns:        0, // Alice starts with 0 sent messages
 	}
 
-	// Step 5: Set up Bob's initial state
-	// Bob's state includes Alice's public key in dhr
-	bobState := &state{
-		dhs:       key_ed25519.Pair{Priv: *bobDHKeyPair, Pub: *bobPubKey}, // Bob's own key pair
-		dhr:       alicePubKey,                                            // Alice's public key for Bob's DH calculations
-		rk:        randomRootKey,                                          // Shared root key
-		ckr:       nil,                                                    // Not initialized until Bob advances the ratchet
-		mkSkipped: make(map[mkSkippedKey]*MsgKey),
-		nr:        0, // Bob starts with 0 received messages
+	// Step 5: Set up Bob's initial State
+	// Bob's State includes Alice's public key in Dhr
+	bobState := &State{
+		Dhs:       key_ed25519.Pair{Priv: *bobDHKeyPair, Pub: *bobPubKey}, // Bob's own key pair
+		Dhr:       alicePubKey,                                            // Alice's public key for Bob's DH calculations
+		Rk:        randomRootKey,                                          // Shared root key
+		Ckr:       nil,                                                    // Not initialized until Bob advances the ratchet
+		MkSkipped: make(map[MkSkippedKey]*MsgKey),
+		Nr:        0, // Bob starts with 0 received messages
 	}
 
 	// Step 6: Alice performs a DH ratchet send chain
@@ -179,17 +179,17 @@ func TestDHRatchetSendAndReceiveChain(t *testing.T) {
 
 	// Step 7: Bob receives Alice's new public key via header and performs a DH ratchet receive chain
 	header := Header{
-		RatchetPub: aliceState.dhs.Pub, // Alice's new public key
+		RatchetPub: aliceState.Dhs.Pub, // Alice's new public key
 	}
 	err = dhRatchetReceiveChain(bobState, &header)
 	assert.NoError(t, err)
 
-	// Step 8: Assert that Alice's root key (rk) and Bob's root key (rk) match after the DH ratchet
-	assert.Equal(t, aliceState.rk, bobState.rk, "Root keys should match after DH ratchet")
+	// Step 8: Assert that Alice's root key (Rk) and Bob's root key (Rk) match after the DH ratchet
+	assert.Equal(t, aliceState.Rk, bobState.Rk, "Root keys should match after DH ratchet")
 
-	// Step 9: Assert that Alice's sending chain key (cks) matches Bob's receiving chain key (ckr)
-	assert.Equal(t, aliceState.cks, bobState.ckr, "Alice's send chain key should match Bob's receive chain key")
+	// Step 9: Assert that Alice's sending chain key (Cks) matches Bob's receiving chain key (Ckr)
+	assert.Equal(t, aliceState.Cks, bobState.Ckr, "Alice's send chain key should match Bob's receive chain key")
 
-	// Additional check: Ensure Alice's public key (dhs) is properly updated for Bob
-	assert.Equal(t, aliceState.dhs.Pub, *bobState.dhr, "Bob's received public key should match Alice's new DH public key")
+	// Additional check: Ensure Alice's public key (Dhs) is properly updated for Bob
+	assert.Equal(t, aliceState.Dhs.Pub, *bobState.Dhr, "Bob's received public key should match Alice's new DH public key")
 }

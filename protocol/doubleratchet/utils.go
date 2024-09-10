@@ -26,7 +26,7 @@ type doubleRatchetUtils interface {
 	dh(privKey key_ed25519.PrivateKey, pubKey key_ed25519.PublicKey) (*RatchetKey, error)
 
 	// kdfRk returns a pair (32-byte root key, 32-byte chain key) as the output of applying a
-	// KDF keyed by a 32-byte root key rk to a Diffie-Hellman output dh_out.
+	// KDF keyed by a 32-byte root key Rk to a Diffie-Hellman output dh_out.
 	kdfRk(rk RatchetKey, dhOut RatchetKey) (rootKey *RatchetKey, chainKey *RatchetKey, err error)
 
 	// kdfCk returns a pair (32-byte chain key, 32-byte message key) as the output of applying a

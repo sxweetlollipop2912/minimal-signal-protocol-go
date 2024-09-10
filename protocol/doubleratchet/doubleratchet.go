@@ -16,15 +16,15 @@ var (
 // https://signal.org/docs/specifications/doubleratchet/#encrypting-messages and
 // https://signal.org/docs/specifications/doubleratchet/#decrypting-messages
 type DoubleRatchet struct {
-	currentState *state
+	CurrentState *State
 }
 
-func newDoubleRatchet(initState *state) *DoubleRatchet {
-	if initState.mkSkipped == nil {
-		initState.mkSkipped = make(map[mkSkippedKey]*MsgKey)
+func newDoubleRatchet(initState *State) *DoubleRatchet {
+	if initState.MkSkipped == nil {
+		initState.MkSkipped = make(map[MkSkippedKey]*MsgKey)
 	}
 	return &DoubleRatchet{
-		currentState: initState,
+		CurrentState: initState,
 	}
 }
 
@@ -32,16 +32,16 @@ func newDoubleRatchet(initState *state) *DoubleRatchet {
 func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (*DoubleRatchet, error) {
 	utils := newDoubleRatchetUtils()
 
-	// Init dhs
+	// Init Dhs
 	dhs, err := utils.generateDH()
 	if err != nil {
 		return nil, err
 	}
 
-	// Init dhr
+	// Init Dhr
 	dhr := bobDHPubKey
 
-	// Init rk, cks
+	// Init Rk, Cks
 	kdfRkInput, err := utils.dh(dhs.Priv, dhr)
 	if err != nil {
 		return nil, err
@@ -51,23 +51,23 @@ func InitAlice(sk RatchetKey, bobDHPubKey key_ed25519.PublicKey) (*DoubleRatchet
 		return nil, err
 	}
 
-	return newDoubleRatchet(&state{
-		dhs:       *dhs,
-		dhr:       &dhr,
-		rk:        *rk,
-		cks:       cks,
-		mkSkipped: make(map[mkSkippedKey]*MsgKey),
-		// ckr, ns, nr, pn, mkSkipped are init as zero values
+	return newDoubleRatchet(&State{
+		Dhs:       *dhs,
+		Dhr:       &dhr,
+		Rk:        *rk,
+		Cks:       cks,
+		MkSkipped: make(map[MkSkippedKey]*MsgKey),
+		// Ckr, Ns, Nr, Pn, MkSkipped are init as zero values
 	}), nil
 }
 
 // InitBob initializes the Double Ratchet for the receiver
 func InitBob(sk RatchetKey, bobDHKeyPair key_ed25519.Pair) *DoubleRatchet {
-	return newDoubleRatchet(&state{
-		dhs:       bobDHKeyPair,
-		rk:        sk,
-		mkSkipped: make(map[mkSkippedKey]*MsgKey),
-		// dhr, cks, ckr, ns, nr, pn, mkSkipped are init as zero values
+	return newDoubleRatchet(&State{
+		Dhs:       bobDHKeyPair,
+		Rk:        sk,
+		MkSkipped: make(map[MkSkippedKey]*MsgKey),
+		// Dhr, Cks, Ckr, Ns, Nr, Pn, MkSkipped are init as zero values
 	})
 }
 
@@ -84,27 +84,27 @@ func (dr *DoubleRatchet) Encrypt(plaintext []byte, associatedData []byte, forwar
 	)
 
 	// 0. If forwardDHRatchet is true, perform a DH ratchet step
-	if forwardDHRatchet || dr.currentState.cks == nil {
-		if err := dhRatchetSendChain(dr.currentState); err != nil {
+	if forwardDHRatchet || dr.CurrentState.Cks == nil {
+		if err := dhRatchetSendChain(dr.CurrentState); err != nil {
 			return nil, nil, err
 		}
 	}
 
 	// 1. Generate current message key & update chain key
-	dr.currentState.cks, mk, err = utils.kdfCk(*dr.currentState.cks)
+	dr.CurrentState.Cks, mk, err = utils.kdfCk(*dr.CurrentState.Cks)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// 2. Create header & its byte sequence
 	header := Header{
-		RatchetPub: dr.currentState.dhs.Pub,
-		Pn:         dr.currentState.pn,
-		N:          dr.currentState.ns,
+		RatchetPub: dr.CurrentState.Dhs.Pub,
+		Pn:         dr.CurrentState.Pn,
+		N:          dr.CurrentState.Ns,
 	}
 
-	// 3. Update state.ns
-	dr.currentState.ns++
+	// 3. Update State.Ns
+	dr.CurrentState.Ns++
 
 	// 4. Encrypt plaintext w/ header + associatedData
 	ad, err := utils.concat(associatedData, header)
@@ -127,11 +127,11 @@ func (dr *DoubleRatchet) Encrypt(plaintext []byte, associatedData []byte, forwar
 // • This function then stores any skipped message keys from the current receiving chain, performs a symmetric-key
 // ratchet step to derive the relevant message key and next chain key, and decrypts the message.
 // If an exception is raised (e.g. message authentication failure) then the message is discarded and changes to
-// the state object are discarded. Otherwise, accept the decrypted plaintext and store changes to the state object.
+// the State object are discarded. Otherwise, accept the decrypted plaintext and store changes to the State object.
 func (dr *DoubleRatchet) Decrypt(header Header, ciphertext []byte, associatedData []byte) ([]byte, error) {
 	var (
-		// If no error occurs, dr.currentState will be updated with newState
-		newState = *dr.currentState
+		// If no error occurs, dr.CurrentState will be updated with newState
+		newState = *dr.CurrentState
 		mk       *MsgKey
 	)
 	// 1. Try to decrypt with skipped message keys
@@ -145,12 +145,12 @@ func (dr *DoubleRatchet) Decrypt(header Header, ciphertext []byte, associatedDat
 
 	// 2. If a new ratchet key has been received, save skipped message keys from the receiving chain and
 	// perform a DH ratchet step
-	if newState.dhr == nil {
+	if newState.Dhr == nil {
 		if err := dhRatchetReceiveChain(&newState, &header); err != nil {
 			return nil, err
 		}
 
-	} else if header.RatchetPub != *newState.dhr {
+	} else if header.RatchetPub != *newState.Dhr {
 		// If a new ratchet key has been received
 		if err := dr.skipMessageKeys(&newState, header.Pn); err != nil {
 			return nil, err
@@ -166,14 +166,14 @@ func (dr *DoubleRatchet) Decrypt(header Header, ciphertext []byte, associatedDat
 	}
 
 	// 4. Get message key
-	newState.ckr, mk, err = utils.kdfCk(*newState.ckr)
+	newState.Ckr, mk, err = utils.kdfCk(*newState.Ckr)
 	if err != nil {
 		return nil, err
 	}
-	newState.nr++
+	newState.Nr++
 
-	// 5. Update state
-	dr.currentState = &newState
+	// 5. Update State
+	dr.CurrentState = &newState
 
 	// 6. Decrypt
 	adHeader, err := utils.concat(associatedData, header)
@@ -188,35 +188,35 @@ func (dr *DoubleRatchet) MaxSkip() MsgIndex {
 	return maxSkip
 }
 
-func (dr *DoubleRatchet) skipMessageKeys(newState *state, until MsgIndex) error {
-	if newState.nr+dr.MaxSkip() < until {
+func (dr *DoubleRatchet) skipMessageKeys(newState *State, until MsgIndex) error {
+	if newState.Nr+dr.MaxSkip() < until {
 		return ErrSkippingTooManyKeys
 	}
 
-	if newState.ckr != nil {
-		for newState.nr < until {
+	if newState.Ckr != nil {
+		for newState.Nr < until {
 			var mk *MsgKey
 			var err error
-			newState.ckr, mk, err = utils.kdfCk(*newState.ckr)
+			newState.Ckr, mk, err = utils.kdfCk(*newState.Ckr)
 			if err != nil {
 				return err
 			}
-			newState.mkSkipped[mkSkippedKey{
-				RatchetPub: *newState.dhr,
-				N:          newState.nr,
+			newState.MkSkipped[MkSkippedKey{
+				RatchetPub: *newState.Dhr,
+				N:          newState.Nr,
 			}] = mk
-			newState.nr++
+			newState.Nr++
 		}
 	}
 	return nil
 }
 
-func trySkippedMessageKeys(newState *state, header *Header, ciphertext, AD []byte) ([]byte, error) {
-	if mk, exists := newState.mkSkipped[mkSkippedKey{
+func trySkippedMessageKeys(newState *State, header *Header, ciphertext, AD []byte) ([]byte, error) {
+	if mk, exists := newState.MkSkipped[MkSkippedKey{
 		RatchetPub: header.RatchetPub,
 		N:          header.N,
 	}]; exists {
-		delete(newState.mkSkipped, mkSkippedKey{
+		delete(newState.MkSkipped, MkSkippedKey{
 			RatchetPub: header.RatchetPub,
 			N:          header.N,
 		})
@@ -229,44 +229,44 @@ func trySkippedMessageKeys(newState *state, header *Header, ciphertext, AD []byt
 	return nil, nil
 }
 
-func dhRatchetReceiveChain(newState *state, header *Header) error {
-	newState.nr = 0
-	newState.dhr = &header.RatchetPub
+func dhRatchetReceiveChain(newState *State, header *Header) error {
+	newState.Nr = 0
+	newState.Dhr = &header.RatchetPub
 
-	dhOut, err := utils.dh(newState.dhs.Priv, *newState.dhr)
+	dhOut, err := utils.dh(newState.Dhs.Priv, *newState.Dhr)
 	if err != nil {
 		return err
 	}
 
-	rk, ckr, err := utils.kdfRk(newState.rk, *dhOut)
+	rk, ckr, err := utils.kdfRk(newState.Rk, *dhOut)
 	if err != nil {
 		return err
 	}
-	newState.rk = *rk
-	newState.ckr = ckr
+	newState.Rk = *rk
+	newState.Ckr = ckr
 	return nil
 }
 
-func dhRatchetSendChain(newState *state) error {
-	newState.pn = newState.ns
-	newState.ns = 0
+func dhRatchetSendChain(newState *State) error {
+	newState.Pn = newState.Ns
+	newState.Ns = 0
 
 	dhs, err := utils.generateDH()
 	if err != nil {
 		return err
 	}
-	newState.dhs = *dhs
+	newState.Dhs = *dhs
 
-	dhOut, err := utils.dh(newState.dhs.Priv, *newState.dhr)
+	dhOut, err := utils.dh(newState.Dhs.Priv, *newState.Dhr)
 	if err != nil {
 		return err
 	}
 
-	rk, cks, err := utils.kdfRk(newState.rk, *dhOut)
+	rk, cks, err := utils.kdfRk(newState.Rk, *dhOut)
 	if err != nil {
 		return err
 	}
-	newState.rk = *rk
-	newState.cks = cks
+	newState.Rk = *rk
+	newState.Cks = cks
 	return nil
 }
