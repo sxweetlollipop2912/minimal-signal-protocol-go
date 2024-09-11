@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"minimal-signal/client"
+	"minimal-signal/configs"
+	"minimal-signal/crypto/key_ed25519"
 	"minimal-signal/protocol/x3dh/bob"
 	"os"
 
@@ -23,13 +25,11 @@ func main() {
 	}
 	userID := os.Args[1]
 
-	if userID == "alice" {
-		godotenv.Load(".env.alice")
-	} else if userID == "bob" {
-		godotenv.Load(".env.bob")
-	} else {
-		godotenv.Load(".env")
+	if err := createKeysIfNotExists(userID); err != nil {
+		logger.Fatalf("Error creating keys: %v", err)
+		return
 	}
+	godotenv.Load(fmt.Sprintf("%s/.env.%s", configs.DebugSecretDir, userID))
 
 	identityKey, err := decodeHexTo32BytesArray(os.Getenv("IDENTITY_KEY"))
 	if err != nil {
@@ -87,4 +87,39 @@ func decodeHexTo32BytesArray(hexStr string) ([32]byte, error) {
 	}
 	copy(byteArray[:], decodedBytes)
 	return byteArray, nil
+}
+
+func createKeysIfNotExists(userId string) error {
+	// Check if the .env.<userId> file already exists
+	envFileName := fmt.Sprintf("%s/.env.%s", configs.DebugSecretDir, userId)
+	if _, err := os.Stat(envFileName); err == nil {
+		return nil
+	}
+
+	// Generate a new private key
+	idkey, err := key_ed25519.New()
+	if err != nil {
+		return fmt.Errorf("failed to generate private key: %v", err)
+	}
+	prekey, err := key_ed25519.New()
+	if err != nil {
+		return fmt.Errorf("failed to generate private key: %v", err)
+	}
+
+	file, err := os.Create(envFileName)
+	if err != nil {
+		return fmt.Errorf("failed to create env file: %v", err)
+	}
+	defer file.Close()
+
+	// Write the keys to the file
+	_, err = file.WriteString(fmt.Sprintf("IDENTITY_KEY=%x\n", *idkey))
+	if err != nil {
+		return fmt.Errorf("failed to write identity key: %v", err)
+	}
+	_, err = file.WriteString(fmt.Sprintf("PREKEY=%x\n", *prekey))
+	if err != nil {
+		return fmt.Errorf("failed to write prekey: %v", err)
+	}
+	return nil
 }

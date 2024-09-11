@@ -48,7 +48,7 @@ func NewChatApp(userID string, userKeyBundle *bob.BobPrekeyBundle) *ChatApp {
 // connectToWebSocket connects to the WebSocket server.
 // Already has recipientID set.
 func (app *ChatApp) connectToWebSocket() error {
-	serverUrl := fmt.Sprintf("ws://%s%s?userId=%s", configs.ServerAddress, configs.WebSocketPath, app.userID)
+	serverUrl := fmt.Sprintf("ws://%s%s?from=%s&to=%s", configs.ServerAddress, configs.WebSocketPath, app.userID, app.recipientID)
 	conn, _, err := websocket.DefaultDialer.Dial(serverUrl, nil)
 	if err != nil {
 		return fmt.Errorf("failed to connect to WebSocket server: %w", err)

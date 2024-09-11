@@ -21,12 +21,17 @@ type Server struct {
 	cancelCtx context.CancelFunc
 
 	redisClient    *redis.Client
-	connectedUsers map[string]*websocket.Conn
+	connectedUsers map[connKey]*websocket.Conn
 	mutex          *sync.Mutex
 	logger         *logrus.Logger
 
 	// WebSocket upgrader settings
 	upgrader *websocket.Upgrader
+}
+
+type connKey struct {
+	from string
+	to   string
 }
 
 func NewServer(ctx context.Context, redisClient *redis.Client, logger *logrus.Logger) *Server {
@@ -35,7 +40,7 @@ func NewServer(ctx context.Context, redisClient *redis.Client, logger *logrus.Lo
 		ctx:            ctx,
 		cancelCtx:      cancelCtx,
 		redisClient:    redisClient,
-		connectedUsers: make(map[string]*websocket.Conn),
+		connectedUsers: make(map[connKey]*websocket.Conn),
 		mutex:          &sync.Mutex{},
 		logger:         logger,
 		upgrader: &websocket.Upgrader{
@@ -55,47 +60,52 @@ func (s *Server) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	defer ws.Close()
 
 	// Extract userId from the URL query
-	userID := r.URL.Query().Get("userId")
-	if userID == "" {
-		s.logger.Error("No userId provided in the query")
+	fromID := r.URL.Query().Get("from")
+	if fromID == "" {
+		s.logger.Error("No fromID provided in the query")
+		return
+	}
+	toID := r.URL.Query().Get("to")
+	if toID == "" {
+		s.logger.Error("No toID provided in the query")
 		return
 	}
 
 	// Add user to connectedUsers map
 	s.mutex.Lock()
-	s.connectedUsers[userID] = ws
+	s.connectedUsers[connKey{from: fromID, to: toID}] = ws
 	s.mutex.Unlock()
-	s.logger.Infof("User %s connected", userID)
+	s.logger.Infof("User %s connected, talking to %s", fromID, toID)
 
 	// Check for queued messages
-	s.retrieveQueuedMessages(userID, ws)
+	s.retrieveQueuedMessages(toID, fromID, ws)
 
 	// Listen for incoming messages
 	for {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
-			s.logger.Errorf("Error reading message from user %s: %v", userID, err)
+			s.logger.Errorf("Error reading message from user %s: %v", fromID, err)
 			break
 		}
 
 		var msgObj common.MessageBundle
 		if err := json.Unmarshal(message, &msgObj); err != nil {
-			s.logger.Errorf("Invalid message format from user %s: %v", userID, err)
+			s.logger.Errorf("Invalid message format from user %s: %v", fromID, err)
 			continue
 		}
 
 		// Add the sender's ID to the message
-		msgObj.From = userID
-		s.logger.Infof("Received message from user %s: %+v\n", userID, msgObj)
+		msgObj.From = fromID
+		s.logger.Infof("Received message from user %s: %+v\n", fromID, msgObj)
 
 		s.handleMessage(&msgObj)
 	}
 
 	// Remove user from connectedUsers map when they disconnect
 	s.mutex.Lock()
-	delete(s.connectedUsers, userID)
+	delete(s.connectedUsers, connKey{from: fromID, to: toID})
 	s.mutex.Unlock()
-	s.logger.Infof("User %s disconnected", userID)
+	s.logger.Infof("User %s disconnected", fromID)
 }
 
 func (s *Server) Close() {
@@ -112,7 +122,7 @@ func (s *Server) Close() {
 // Handle sending messages and queuing for offline users
 func (s *Server) handleMessage(msg *common.MessageBundle) {
 	s.mutex.Lock()
-	recipientConn, online := s.connectedUsers[msg.To]
+	recipientConn, online := s.connectedUsers[connKey{from: msg.To, to: msg.From}]
 	s.mutex.Unlock()
 
 	if online {
@@ -123,39 +133,39 @@ func (s *Server) handleMessage(msg *common.MessageBundle) {
 		}
 	} else {
 		// Queue the message in Redis if the recipient is offline
-		s.queueMessage(msg.To, msg)
+		s.queueMessage(msg)
 	}
 }
 
 // Queue a message in Redis
-func (s *Server) queueMessage(userID string, msg *common.MessageBundle) {
+func (s *Server) queueMessage(msg *common.MessageBundle) {
 	messageJSON, err := json.Marshal(msg)
 	if err != nil {
-		s.logger.Errorf("Error marshalling message for user %s: %v", userID, err)
+		s.logger.Errorf("Error marshalling message from %s to %s: %v", msg.From, msg.To, err)
 		return
 	}
-	if err := s.redisClient.RPush(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, userID), messageJSON).Err(); err != nil {
-		s.logger.Errorf("Error queuing message for user %s: %v", userID, err)
+	if err := s.redisClient.RPush(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, msg.From, msg.To), messageJSON).Err(); err != nil {
+		s.logger.Errorf("Error queuing message from %s to %s: %v", msg.From, msg.To, err)
 	}
 }
 
 // Retrieve queued messages for a user when they reconnect
-func (s *Server) retrieveQueuedMessages(userID string, ws *websocket.Conn) {
-	messages, err := s.redisClient.LRange(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, userID), 0, -1).Result()
+func (s *Server) retrieveQueuedMessages(from string, to string, ws *websocket.Conn) {
+	messages, err := s.redisClient.LRange(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, from, to), 0, -1).Result()
 	if err != nil {
-		s.logger.Errorf("Error retrieving queued messages for user %s: %v", userID, err)
+		s.logger.Errorf("Error retrieving queued messages from %s to %s: %v", from, to, err)
 		return
 	}
 
 	for _, message := range messages {
 		if err := ws.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
-			s.logger.Errorf("Error sending queued message to user %s: %v", userID, err)
+			s.logger.Errorf("Error sending queued message from %s to %s: %v", from, to, err)
 			return
 		}
 	}
 
 	// Clear the queue after sending
-	s.redisClient.Del(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, userID))
+	s.redisClient.Del(s.ctx, fmt.Sprintf(configs.ServerMessageQueueKey, from, to))
 }
 
 func (s *Server) HandlePostKeys(w http.ResponseWriter, r *http.Request) {

@@ -12,8 +12,10 @@ var (
 	ClientRatchetKey       = "client:ratchet:%s:%s"
 	ClientMessagesKey      = "client:messages:%s:%s"
 	ClientInitHandshakeKey = "client:initHandshake:%s:%s"
-	ServerMessageQueueKey  = "server:messages:%s"
+	ServerMessageQueueKey  = "server:messages:%s:%s"
 	ServerUserPubKey       = "publicKey:%s"
 
 	ForwardDHRatchetChanceTotal = 20
+
+	DebugSecretDir = "secrets"
 )

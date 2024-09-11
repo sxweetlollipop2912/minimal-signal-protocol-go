@@ -102,7 +102,7 @@ func (app *ChatApp) layout(g *gocui.Gui) error {
 		if err != nil {
 			return err
 		}
-		v.Title = "Fingerprint - Compare this with your friend's to make sure he's your friend"
+		v.Title = fmt.Sprintf("Fingerprint - Compare this with %s's to make sure he/she is %s", app.recipientID, app.recipientID)
 		v.Wrap = true
 		fmt.Fprintln(v, fingerprint)
 	}
