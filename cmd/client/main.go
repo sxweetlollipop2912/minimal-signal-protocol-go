@@ -29,23 +29,26 @@ func main() {
 		logger.Fatalf("Error creating keys: %v", err)
 		return
 	}
-	godotenv.Load(fmt.Sprintf("%s/.env.%s", configs.DebugSecretDir, userID))
+	if err := godotenv.Load(fmt.Sprintf("%s/.env.%s", configs.DebugSecretDir, userID)); err != nil {
+		logger.Fatalf("Error loading .env file: %v", err)
+		return
+	}
 
 	identityKey, err := decodeHexTo32BytesArray(os.Getenv("IDENTITY_KEY"))
 	if err != nil {
-		fmt.Printf("Failed to decode IDENTITY_KEY: %v\n", err)
+		logger.Fatalf("Failed to decode IDENTITY_KEY: %v", err)
 		return
 	}
 
 	prekey, err := decodeHexTo32BytesArray(os.Getenv("PREKEY"))
 	if err != nil {
-		fmt.Printf("Failed to decode PREKEY: %v\n", err)
+		logger.Fatalf("Failed to decode PREKEY: %v", err)
 		return
 	}
 
 	// oneTimePrekey, err := decodeHexTo32Byte(os.Getenv("ONE_TIME_PREKEY"))
 	// if err != nil {
-	// 	fmt.Printf("Failed to decode ONE_TIME_PREKEY: %v\n", err)
+	// 	logger.Fatalf("Failed to decode ONE_TIME_PREKEY: %v\n", err)
 	// 	return
 	// }
 
