@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
@@ -96,7 +97,7 @@ func (s *Server) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 		// Add the sender's ID to the message
 		msgObj.From = fromID
-		s.logger.Infof("Received message from user %s: %+v\n", fromID, msgObj)
+		s.logger.Infof("Received message from user %s: %s\n", fromID, spew.Sdump(msgObj))
 
 		s.handleMessage(&msgObj)
 	}
