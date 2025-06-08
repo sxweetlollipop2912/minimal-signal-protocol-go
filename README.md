@@ -1,5 +1,9 @@
 # minimal-signal-protocol-go
 
+Something to read:
+
+https://deluxe-scabiosa-998.notion.site/CS434-Signal-Protocol-Reimplementation-76c713270368472b823eaa75c8620112
+
 ## How to run
 
 Requirements:
